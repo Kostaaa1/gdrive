@@ -1,8 +1,11 @@
-export type FolderActions = "CREATE" | "READ";
-export type SpecifiedFolderActions = "RENAME" | "READ" | "CREATE" | "DELETE" | "BACK";
-export type FileActions = "DOWNLOAD" | "RENAME" | "INFO" | "DELETE" | "BACK";
+export type MainActions = "CREATE" | "READ" | "OPEN_DRIVE";
+export type FolderActions =
+  | "RENAME"
+  | "READ"
+  | "CREATE"
+  | "DELETE"
+  | "UPLOAD_FILE"
+  | "UPLOAD_FOLDER"
+  | "BACK";
 
-// type TFolderPrompt = {
-//   message: string;
-//   choices: { name: string; value: SpecifiedFolderActions }[];
-// };
+export type FileActions = "DOWNLOAD" | "RENAME" | "INFO" | "DELETE" | "BACK";
