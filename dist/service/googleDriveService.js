@@ -2,7 +2,7 @@ import { readFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { google } from "googleapis";
 import readline from "readline-sync";
-import { convertUrlToStream } from "../utils/utils.js";
+import { convertPathToStream, convertUrlToStream } from "../utils/utils.js";
 const { GOOGLE_CLIENT_ID = "", GOOGLE_CLIENT_SECRET = "", GOOGLE_REDIRECT_URL = "", GOOGLE_TOKEN_ENDPOINT = "", } = process.env;
 const { refresh_token } = JSON.parse(readFileSync("./token.json", "utf-8"));
 export class GoogleDriveService {
@@ -151,14 +151,20 @@ export class GoogleDriveService {
     }
     async emptyTrash() {
         const response = await this.drive_client.files.emptyTrash({});
-        console.log("Deleted trash", response);
         return response;
     }
-    async uploadSingleFile(name, stream, folderId) {
-        console.log("Uploading: ", name);
-        return await this.drive_client.files.create({
+    async uploadSingleFile(file_name, data, folderId) {
+        // console.log("Uploading: ", name);
+        let stream;
+        if (typeof data === "string") {
+            stream = await convertPathToStream(data);
+        }
+        else {
+            stream = data;
+        }
+        const test = await this.drive_client.files.create({
             requestBody: {
-                name,
+                name: file_name,
                 mimeType: "image/jpg",
                 parents: [folderId],
             },
@@ -167,6 +173,8 @@ export class GoogleDriveService {
                 body: stream,
             },
         });
+        console.log("Testtt: ", test);
+        return test;
     }
     // TUserPost[]
     async uploadMultipleFiles(posts, folderId) {

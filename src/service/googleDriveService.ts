@@ -1,11 +1,10 @@
-import axios from "axios";
 import { readFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { GaxiosPromise } from "gaxios";
 import { drive_v3, google } from "googleapis";
 import readline from "readline-sync";
-import { Stream } from "stream";
-import { convertUrlToStream } from "../utils/utils.js";
+import internal, { Stream } from "stream";
+import { convertPathToStream, convertUrlToStream } from "../utils/utils.js";
 
 const {
   GOOGLE_CLIENT_ID = "",
@@ -27,7 +26,6 @@ export class GoogleDriveService {
 
   public constructor() {
     const { clientId, clientSecret, redirectUri, refreshToken } = GoogleDriveService;
-
     this.oatuh2Client = this.createOAuthClient(clientId, clientSecret, redirectUri);
     this.drive_client = this.createDriveClient(refreshToken);
   }
@@ -92,7 +90,6 @@ export class GoogleDriveService {
 
       const content = res.data.files;
       if (!content) throw new Error("Error occured!");
-
       return content;
     } catch (error) {
       console.log(error);
@@ -190,15 +187,26 @@ export class GoogleDriveService {
 
   public async emptyTrash() {
     const response = await this.drive_client.files.emptyTrash({});
-    console.log("Deleted trash", response);
     return response;
   }
 
-  private async uploadSingleFile(name: string, stream: any, folderId: string) {
-    console.log("Uploading: ", name);
-    return await this.drive_client.files.create({
+  public async uploadSingleFile(
+    file_name: string,
+    data: internal.PassThrough | internal.Readable | string,
+    folderId: string
+  ) {
+    // console.log("Uploading: ", name);
+    let stream: internal.PassThrough | internal.Readable;
+
+    if (typeof data === "string") {
+      stream = await convertPathToStream(data);
+    } else {
+      stream = data;
+    }
+
+    const test = await this.drive_client.files.create({
       requestBody: {
-        name,
+        name: file_name,
         mimeType: "image/jpg",
         parents: [folderId],
       },
@@ -207,6 +215,8 @@ export class GoogleDriveService {
         body: stream,
       },
     });
+    console.log("Testtt: ", test);
+    return test;
   }
 
   // TUserPost[]

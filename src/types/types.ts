@@ -1,4 +1,4 @@
-export type MainActions = "CREATE" | "READ" | "OPEN_DRIVE";
+export type MainActions = "CREATE" | "READ" | "OPEN_DRIVE" | "EXIT";
 export type FolderActions =
   | "RENAME"
   | "READ"
