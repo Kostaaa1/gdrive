@@ -9,3 +9,5 @@ export type FolderActions =
   | "BACK";
 
 export type FileActions = "DOWNLOAD" | "RENAME" | "INFO" | "DELETE" | "BACK";
+
+export type UploadFileActions = "LOCAL" | "URL";

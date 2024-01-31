@@ -4,37 +4,39 @@ import { input } from "@inquirer/prompts";
 import { GoogleDriveService } from "./service/googleDriveService.js";
 import open from "open";
 import { ClientQuestions } from "./service/clientQuestions.js";
+import { convertPathToStream, convertUrlToStream, getMimeType, getUrlMimeType, } from "./utils/utils.js";
 const googleDrive = new GoogleDriveService();
 const clientQuestions = new ClientQuestions();
+const { ask_file_q, ask_folder_q, ask_main_q, ask_q, ask_upload_file_method } = clientQuestions;
 const handleFileActions = async (selected_folder) => {
     console.clear();
     const { id } = selected_folder;
     const files = await googleDrive.getFolderContent(id);
-    const file_actions = await select({
+    const selected_file = await select({
         message: "Select File",
         choices: [
-            ...files.map((file) => ({ name: file.name, value: file })),
+            ...files.map((file) => ({ name: file.name || "", value: file })),
             { name: "👈Back", value: { name: "BACK" } },
         ],
     });
-    if (file_actions.name === "BACK") {
+    const { name, mimeType } = selected_file;
+    if (name === "BACK") {
         handleFolderActions();
         return;
     }
-    if (file_actions.mimeType === "application/vnd.google-apps.folder") {
-        handleFolderActions(file_actions.name);
+    if (mimeType === "application/vnd.google-apps.folder") {
+        handleFolderActions(name);
     }
     else {
-        console.log("Handle file");
-        const file_action_choice = await clientQuestions.askFileQuestions(file_actions.name);
-        console.log(file_action_choice);
+        const file_action_choice = await clientQuestions.ask_file_q(name);
+        console.log("File actions for: ", file_action_choice);
     }
 };
 const handleFolderActions = async (name) => {
     console.clear();
-    let folder_name;
-    if (!name) {
-        const folders = await googleDrive.getFolders();
+    let folder_name = name;
+    if (!folder_name) {
+        const folders = await googleDrive.getRootFolders();
         if (!folders || folders.length === 0)
             return;
         folder_name = await select({
@@ -46,35 +48,9 @@ const handleFolderActions = async (name) => {
             return;
         }
     }
-    else {
-        folder_name = name;
-    }
     const folder_id = await googleDrive.getFolderIdWithName(folder_name);
     const selected_folder = { name: folder_name, id: folder_id };
-    const folder_action = await select({
-        message: `Choose action for folder ${selected_folder.name}: `,
-        choices: [
-            { name: "Rename Folder", value: "RENAME" },
-            { name: "Get Folder Content", value: "READ" },
-            { name: "Delete Folder", value: "DELETE" },
-            {
-                name: "New Folder",
-                value: "CREATE",
-                description: "Creates new folder inside selected folder",
-            },
-            {
-                name: "Upload file",
-                value: "UPLOAD_FILE",
-                description: "Upload single file (file path required)",
-            },
-            {
-                name: "Upload folder",
-                value: "UPLOAD_FOLDER",
-                description: "Upload folder with files (Folder path required)",
-            },
-            { name: "👈Back", value: "BACK" },
-        ],
-    });
+    const folder_action = await ask_folder_q(selected_folder.name);
     switch (folder_action) {
         case "RENAME":
             const new_name = await input({ message: `Rename folder ${selected_folder.name}: ` });
@@ -85,56 +61,52 @@ const handleFolderActions = async (name) => {
             handleFileActions(selected_folder);
             break;
         case "UPLOAD_FILE":
-            const file_name = await input({ message: "Provide the name of the new file: " });
-            const file_path = await input({
-                message: "Provide the location of the file on your machine: ",
-            });
-            await googleDrive.uploadSingleFile(file_name.trim(), file_path.trim(), selected_folder.id);
-            handleFolderActions();
+            const choice = await ask_upload_file_method();
+            let stream;
+            let file_name;
+            let file_path;
+            let mime_type;
+            switch (choice) {
+                case "LOCAL":
+                    file_name = await ask_q("Provide the name of the new file: ");
+                    file_path = await ask_q("Provide the location of the file on your machine: ");
+                    const mime = getMimeType(file_path);
+                    if (!mime) {
+                        console.log("File path is invalid. Please check if you have entered the correct file path.");
+                        ask_upload_file_method();
+                        return;
+                    }
+                    mime_type = mime;
+                    stream = await convertPathToStream(file_path);
+                case "URL":
+                    file_name = await ask_q("Provide the name of the new file: ");
+                    file_path = await ask_q("Provide the URL: ");
+                    mime_type = await getUrlMimeType(file_path);
+                    stream = await convertUrlToStream(file_path);
+            }
+            await googleDrive.uploadSingleFile(file_name, stream, selected_folder.id, mime_type);
+            // handleFolderActions();
             break;
         case "DELETE":
             console.log("Deleting folder...");
-            await googleDrive.deleteFolder(selected_folder.id);
+            const isSure = await ask_q("Are you sure?");
+            if (isSure)
+                await googleDrive.deleteFolder(selected_folder.id);
             handleFolderActions();
             break;
         case "CREATE":
-            const new_folder = await input({ message: "Enter new folder name: " });
-            await googleDrive.createFolder(new_folder.trim(), selected_folder.id);
+            const newName = await input({ message: "Enter new folder name: " });
+            await googleDrive.createFolder(newName);
             handleFolderActions();
             break;
         case "BACK":
             handleMainActions();
             break;
-        default:
     }
 };
-// /mnt/c/Users/kosta/OneDrive/Desktop/imgs/4b0a345f-59b0-4084-b55d-87277db3bdf5_OmariJazz_holy_sword_wielded_by_hooded_scion_mage_thrusting_while_t-posing_in_the_air_with_a_full_moon_behind_.png
 const handleMainActions = async () => {
     console.clear();
-    const init_action = await select({
-        message: "Choose Action:",
-        choices: [
-            {
-                name: "New folder",
-                value: "CREATE",
-                description: "Create new folder at root",
-            },
-            {
-                name: "Read all folders",
-                value: "READ",
-                description: "Get all root folders",
-            },
-            {
-                name: "Open Google Drive",
-                value: "OPEN_DRIVE",
-                description: "Opens Google Drive in your default browser",
-            },
-            {
-                name: "Exit",
-                value: "EXIT",
-            },
-        ],
-    });
+    const init_action = await ask_main_q();
     switch (init_action) {
         case "CREATE":
             const new_folder = await input({ message: "Enter new folder name: " });

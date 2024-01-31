@@ -1,12 +1,13 @@
 import { input, select } from "@inquirer/prompts";
+import { FileActions, FolderActions, MainActions, UploadFileActions } from "../types/types.js";
 
 export class ClientQuestions {
-  public async askQuestion(message) {
+  public async ask_q(message: string) {
     const res = await input({ message });
     return res.trim();
   }
 
-  public async askMainQuestions() {
+  public async ask_main_q(): Promise<MainActions> {
     const init_action = await select({
       message: "Choose Action:",
       choices: [
@@ -31,10 +32,10 @@ export class ClientQuestions {
         },
       ],
     });
-    return init_action.trim();
+    return init_action.trim() as MainActions;
   }
 
-  public async askFolderQuestions(folder_name: string) {
+  public async ask_folder_q(folder_name: string): Promise<FolderActions> {
     const folder_action = await select({
       message: `Choose action for folder ${folder_name}: `,
       choices: [
@@ -59,20 +60,31 @@ export class ClientQuestions {
         { name: "👈Back", value: "BACK" },
       ],
     });
-    return folder_action.trim();
+    return folder_action.trim() as FolderActions;
   }
 
-  public async askFileQuestions(folder_content: string) {
+  public async ask_file_q(folder_content: string): Promise<FileActions> {
     const folder_action = await select({
       message: `Choose action for folder ${folder_content}: `,
       choices: [
         { name: "Rename File", value: "RENAME" },
         { name: "Delete File", value: "DELETE", description: "Delete selected file." },
-        // { name: "Open File", value: "OPEN" },
+        { name: "Open File", value: "OPEN" },
         { name: "Move File", value: "MOVE" },
         { name: "👈Back", value: "BACK" },
       ],
     });
-    return folder_action.trim();
+    return folder_action.trim() as FileActions;
+  }
+
+  public async ask_upload_file_method(): Promise<UploadFileActions> {
+    const choice = await select({
+      message: "Do you want to upload from URL or from local machine?",
+      choices: [
+        { name: "Url", value: "URL" },
+        { name: "Local Machine", value: "LOCAL" },
+      ],
+    });
+    return choice.trim() as UploadFileActions;
   }
 }

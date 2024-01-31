@@ -1,10 +1,10 @@
 import { input, select } from "@inquirer/prompts";
 export class ClientQuestions {
-    async askQuestion(message) {
+    async ask_q(message) {
         const res = await input({ message });
         return res.trim();
     }
-    async askMainQuestions() {
+    async ask_main_q() {
         const init_action = await select({
             message: "Choose Action:",
             choices: [
@@ -31,7 +31,7 @@ export class ClientQuestions {
         });
         return init_action.trim();
     }
-    async askFolderQuestions(folder_name) {
+    async ask_folder_q(folder_name) {
         const folder_action = await select({
             message: `Choose action for folder ${folder_name}: `,
             choices: [
@@ -58,18 +58,28 @@ export class ClientQuestions {
         });
         return folder_action.trim();
     }
-    async askFileQuestions(folder_content) {
+    async ask_file_q(folder_content) {
         const folder_action = await select({
             message: `Choose action for folder ${folder_content}: `,
             choices: [
                 { name: "Rename File", value: "RENAME" },
                 { name: "Delete File", value: "DELETE", description: "Delete selected file." },
-                // { name: "Open File", value: "OPEN" },
+                { name: "Open File", value: "OPEN" },
                 { name: "Move File", value: "MOVE" },
                 { name: "👈Back", value: "BACK" },
             ],
         });
         return folder_action.trim();
+    }
+    async ask_upload_file_method() {
+        const choice = await select({
+            message: "Do you want to upload from URL or from local machine?",
+            choices: [
+                { name: "Url", value: "URL" },
+                { name: "Local Machine", value: "LOCAL" },
+            ],
+        });
+        return choice.trim();
     }
 }
 //# sourceMappingURL=clientQuestions.js.map

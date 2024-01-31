@@ -1,12 +1,32 @@
 import axios from "axios";
-import { Readable, Stream } from "stream";
+import { Readable } from "stream";
 import fs from "fs";
+import mime from "mime";
+export function getMimeType(file_path) {
+    if (fs.existsSync(file_path)) {
+        const mime_type = mime.getType(file_path);
+        return mime_type || "image/jpg";
+    }
+    else {
+        return null;
+    }
+}
+export async function getUrlMimeType(url) {
+    try {
+        const response = await axios.head(url);
+        const contentType = response.headers["content-type"];
+        console.log("MIME Type:", contentType);
+        return contentType;
+    }
+    catch (error) {
+        console.error("Error fetching MIME Type:", error);
+        return undefined;
+    }
+}
 export async function convertUrlToStream(url) {
-    const response = await axios.get(url, { responseType: "arraybuffer" });
-    const imgBuffer = Buffer.from(response.data);
-    const readable = new Stream.PassThrough();
-    readable.end(imgBuffer);
-    return readable;
+    const response = await axios.get(url, { responseType: "stream" });
+    const stream = response.data;
+    return stream;
 }
 export async function convertPathToStream(path) {
     const stream = new Readable();

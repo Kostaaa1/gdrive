@@ -2,8 +2,8 @@ import { readFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { google } from "googleapis";
 import readline from "readline-sync";
-import { convertPathToStream, convertUrlToStream } from "../utils/utils.js";
-const { GOOGLE_CLIENT_ID = "", GOOGLE_CLIENT_SECRET = "", GOOGLE_REDIRECT_URL = "", GOOGLE_TOKEN_ENDPOINT = "", } = process.env;
+import { convertUrlToStream } from "../utils/utils.js";
+const { GOOGLE_CLIENT_ID = "", GOOGLE_CLIENT_SECRET = "", GOOGLE_REDIRECT_URL = "", } = process.env;
 const { refresh_token } = JSON.parse(readFileSync("./token.json", "utf-8"));
 export class GoogleDriveService {
     constructor() {
@@ -42,7 +42,7 @@ export class GoogleDriveService {
             this.oatuh2Client.setCredentials(tokens);
         }
     }
-    async getFolders() {
+    async getRootFolders() {
         const res = await this.drive_client.files.list({
             q: "mimeType='application/vnd.google-apps.folder' and 'root' in parents",
             fields: "files(id, name)",
@@ -52,17 +52,16 @@ export class GoogleDriveService {
             return folders.map((x) => x.name && { name: x.name, value: x.name });
         }
     }
-    async createChildFolder(new_name, folder_id) { }
     async getFolderContent(folderId) {
         try {
             const res = await this.drive_client.files.list({
                 q: `'${folderId}' in parents`,
                 // fields: "files(id)",
             });
-            const content = res.data.files;
-            if (!content)
-                throw new Error("Error occured!");
-            return content;
+            const files = res.data.files;
+            if (!files)
+                throw new Error("Error occured when trying to get the folder content");
+            return files;
         }
         catch (error) {
             console.log(error);
@@ -73,17 +72,17 @@ export class GoogleDriveService {
         const files = await this.getFolderContent(folderId);
         return files.length;
     }
-    async fileExists(folder_name, name) {
+    async fileExists(folderId, name) {
         try {
-            const folderId = await this.getFolderIdWithName(folder_name);
             const folder = await this.drive_client.files.list({
                 q: `'${folderId}' in parents and name='${name}'`,
                 fields: "files(id)",
             });
-            return folder.data.files && folder.data.files.length > 0;
+            const { files } = folder.data;
+            return files.length > 0;
         }
         catch (error) {
-            console.log(error);
+            throw new Error("Error at fileExists");
         }
     }
     async getFolderIdWithName(folderName) {
@@ -97,13 +96,9 @@ export class GoogleDriveService {
                 return file.id;
             }
             else {
-                const { id } = await this.createFolder(folderName);
-                if (id) {
-                    return id;
-                }
-                else {
-                    throw new Error("Failed to create folder or get folder ID");
-                }
+                console.log(`No folder found with name ${folderName}, creating it...`);
+                const id = await this.createFolder(folderName);
+                return id;
             }
         }
         catch (err) {
@@ -111,19 +106,16 @@ export class GoogleDriveService {
             throw new Error(`Error searching for folder: ${err}`);
         }
     }
-    async createFolder(folderName, parentFolderId) {
-        const requestBody = {
-            name: folderName,
-            mimeType: "application/vnd.google-apps.folder",
-        };
-        if (parentFolderId) {
-            requestBody.parents = [parentFolderId];
-        }
+    async createFolder(folderName) {
+        // Returns created folder id (if needed, change the return data)
         const response = await this.drive_client.files.create({
-            requestBody,
+            requestBody: {
+                name: folderName,
+                mimeType: "application/vnd.google-apps.folder",
+            },
             fields: "id",
         });
-        return response.data;
+        return response.data.id;
     }
     async renameFolder(new_name, folder_id) {
         try {
@@ -139,42 +131,30 @@ export class GoogleDriveService {
         }
     }
     async deleteFolder(folderId) {
-        if (folderId) {
-            const response = await this.drive_client.files.delete({
-                fileId: folderId,
-            });
-            return response;
-        }
-        else {
-            return null;
-        }
+        const response = await this.drive_client.files.delete({
+            fileId: folderId,
+        });
+        return response;
     }
     async emptyTrash() {
         const response = await this.drive_client.files.emptyTrash({});
         return response;
     }
-    async uploadSingleFile(file_name, data, folderId) {
-        // console.log("Uploading: ", name);
-        let stream;
-        if (typeof data === "string") {
-            stream = await convertPathToStream(data);
+    async uploadSingleFile(file_name, stream, folderId, mimeType) {
+        const isIncluded = await this.fileExists(folderId, file_name);
+        if (!isIncluded) {
+            await this.drive_client.files.create({
+                requestBody: {
+                    name: file_name,
+                    mimeType,
+                    parents: [folderId],
+                },
+                media: {
+                    body: stream,
+                    mimeType,
+                },
+            });
         }
-        else {
-            stream = data;
-        }
-        const test = await this.drive_client.files.create({
-            requestBody: {
-                name: file_name,
-                mimeType: "image/jpg",
-                parents: [folderId],
-            },
-            media: {
-                mimeType: "image/jpg",
-                body: stream,
-            },
-        });
-        console.log("Testtt: ", test);
-        return test;
     }
     // TUserPost[]
     async uploadMultipleFiles(posts, folderId) {
@@ -183,7 +163,7 @@ export class GoogleDriveService {
                 for (let i = 0; i < posts.length; i++) {
                     const { url, id: fileName } = posts[i];
                     const data = await convertUrlToStream(url);
-                    await this.uploadSingleFile(fileName, data, folderId);
+                    // await this.uploadSingleFile(fileName, data, folderId);
                     resolve(true);
                 }
             }
