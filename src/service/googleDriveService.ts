@@ -12,7 +12,6 @@ const {
 } = process.env;
 
 const { refresh_token } = JSON.parse(readFileSync("./token.json", "utf-8"));
-
 export class GoogleDriveService {
   private drive_client: drive_v3.Drive;
   private oatuh2Client;
@@ -77,25 +76,21 @@ export class GoogleDriveService {
     }
   }
 
-  public async getFolderContent(folderId: string): Promise<drive_v3.Schema$File[]> {
+  public async listFolderFiles(folderId: string): Promise<drive_v3.Schema$File[]> {
     try {
       const res = await this.drive_client.files.list({
         q: `'${folderId}' in parents`,
         // fields: "files(id)",
       });
-
-      const files = res.data.files;
-      if (!files) throw new Error("Error occured when trying to get the folder content");
-
-      return files;
+      return res.data.files || [];
     } catch (error) {
       console.log(error);
-      throw new Error(`Error while getting folder files: ${error}`);
+      return [];
     }
   }
 
   private async getFileCountInFolder(folderId: string): Promise<number> {
-    const files = await this.getFolderContent(folderId);
+    const files = await this.listFolderFiles(folderId);
     return files.length;
   }
 
@@ -105,7 +100,6 @@ export class GoogleDriveService {
         q: `'${folderId}' in parents and name='${name}'`,
         fields: "files(id)",
       });
-
       const { files } = folder.data;
       return files!.length > 0;
     } catch (error) {
@@ -134,21 +128,44 @@ export class GoogleDriveService {
     }
   }
 
-  public async createFolder(folderName: string): Promise<string> {
+  public async createFolder(folder_name: string, folder_id?: string): Promise<string> {
     // Returns created folder id (if needed, change the return data)
+    const requestBody: { name: string; mimeType: string; parents?: string[] } = {
+      name: folder_name,
+      mimeType: "application/vnd.google-apps.folder",
+    };
+    if (folder_id) requestBody.parents = [folder_id];
     const response = await this.drive_client.files.create({
-      requestBody: {
-        name: folderName,
-        mimeType: "application/vnd.google-apps.folder",
-      },
+      requestBody,
       fields: "id",
     });
     return response.data.id as string;
   }
 
+  public async moveFile(file_id: string, folder_id: string) {
+    try {
+      const file = await this.drive_client.files.get({
+        fileId: file_id,
+        fields: "parents",
+      });
+      const previousParents = file?.data.parents!!.join(",");
+      const files = await this.drive_client.files.update({
+        fileId: file_id,
+        addParents: folder_id,
+        removeParents: previousParents,
+        fields: "id, parents",
+      });
+
+      console.log(files.status);
+      return files.status;
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
   public async renameFolder(new_name: string, folder_id: string): Promise<void> {
     try {
-      const res = await this.drive_client.files.update({
+      await this.drive_client.files.update({
         fileId: folder_id,
         requestBody: {
           name: new_name,
@@ -159,16 +176,27 @@ export class GoogleDriveService {
     }
   }
 
-  public async deleteFolder(folderId: string): Promise<GaxiosPromise<void> | null> {
-    const response = await this.drive_client.files.delete({
-      fileId: folderId,
-    });
-    return response;
+  public async deleteFolder(folderId: string): Promise<void> {
+    try {
+      await this.drive_client.files.delete({
+        fileId: folderId,
+      });
+    } catch (error) {
+      console.error(error);
+    }
   }
 
-  public async emptyTrash() {
-    const response = await this.drive_client.files.emptyTrash({});
-    return response;
+  public async moveToTrash(fileId: string): Promise<void> {
+    try {
+      await this.drive_client.files.update({
+        fileId,
+        requestBody: {
+          trashed: false,
+        },
+      });
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   public async uploadSingleFile(
@@ -200,12 +228,28 @@ export class GoogleDriveService {
         for (let i = 0; i < posts.length; i++) {
           const { url, id: fileName } = posts[i];
           const data = await convertUrlToStream(url);
-          // await this.uploadSingleFile(fileName, data, folderId);
+          await this.uploadSingleFile(fileName, data, folderId);
           resolve(true);
         }
       } catch (error) {
         reject(error);
       }
     });
+  }
+
+  // TRASH:
+  public async emptyAllTrash() {
+    const response = await this.drive_client.files.emptyTrash({});
+    return response;
+  }
+
+  public async listFilesInTrash(): Promise<drive_v3.Schema$File[]> {
+    const res = await this.drive_client.files.list({
+      q: "trashed=true",
+      fields: "files(id, name)",
+    });
+
+    const files = res.data.files;
+    return files && files.length > 0 ? files : [];
   }
 }

@@ -1,22 +1,43 @@
 import { input, select } from "@inquirer/prompts";
+import chalk from "chalk";
 export class ClientQuestions {
-    async ask_q(message) {
-        const res = await input({ message });
-        return res.trim();
+    async question(data) {
+        const choice = await input(data);
+        return choice.trim();
     }
-    async ask_main_q() {
-        const init_action = await select({
+    async delete_questions() {
+        const answer = await select({
+            message: "Do you want to permanently delete seleceted or move it to trash",
+            choices: [
+                {
+                    name: "Move it to trash",
+                    value: "TRASH",
+                    description: "The selected will be relocated from current location to trash (The selected will be automatically deleted after 30 days.)",
+                },
+                { name: "Permanently delete", value: "DELETE", description: "Permanently delete." },
+                { name: "Back", value: "BACK" },
+            ],
+        });
+        return answer.trim();
+    }
+    async main_questions() {
+        const answer = await select({
             message: "Choose Action:",
             choices: [
+                {
+                    name: "List all folders",
+                    value: "LIST",
+                    description: "Get a list of all root folders",
+                },
                 {
                     name: "New folder",
                     value: "CREATE",
                     description: "Create new folder at root",
                 },
                 {
-                    name: "Read all folders",
-                    value: "READ",
-                    description: "Get all root folders",
+                    name: "Manage Trash",
+                    value: "TRASH",
+                    description: "Manage Trash (clear trash, restore folder/files, get list of items)",
                 },
                 {
                     name: "Open Google Drive",
@@ -29,57 +50,88 @@ export class ClientQuestions {
                 },
             ],
         });
-        return init_action.trim();
+        return answer.trim();
     }
-    async ask_folder_q(folder_name) {
-        const folder_action = await select({
-            message: `Choose action for folder ${folder_name}: `,
-            choices: [
-                { name: "Rename Folder", value: "RENAME" },
-                { name: "Get Folder Content", value: "READ" },
-                { name: "Delete Folder", value: "DELETE" },
-                {
-                    name: "New Folder",
-                    value: "CREATE",
-                    description: "Creates new folder inside selected folder",
-                },
-                {
-                    name: "Upload file",
-                    value: "UPLOAD_FILE",
-                    description: "Upload single file (file path required)",
-                },
-                {
-                    name: "Upload folder",
-                    value: "UPLOAD_FOLDER",
-                    description: "Upload folder with files (Folder path required)",
-                },
-                { name: "👈Back", value: "BACK" },
-            ],
-        });
-        return folder_action.trim();
-    }
-    async ask_file_q(folder_content) {
-        const folder_action = await select({
-            message: `Choose action for folder ${folder_content}: `,
-            choices: [
-                { name: "Rename File", value: "RENAME" },
-                { name: "Delete File", value: "DELETE", description: "Delete selected file." },
-                { name: "Open File", value: "OPEN" },
-                { name: "Move File", value: "MOVE" },
-                { name: "👈Back", value: "BACK" },
-            ],
-        });
-        return folder_action.trim();
-    }
-    async ask_upload_file_method() {
+    async trash_questions() {
         const choice = await select({
-            message: "Do you want to upload from URL or from local machine?",
+            message: "Choose Trash Action",
             choices: [
-                { name: "Url", value: "URL" },
-                { name: "Local Machine", value: "LOCAL" },
+                {
+                    name: "List Content",
+                    value: "LIST",
+                    description: "Lists folder/files that are in trash",
+                },
+                { name: "Empty trash", value: "EMPTY_ALL", description: "Removes all items from trash" },
+                {
+                    name: "Empty selected item",
+                    value: "EMPTY",
+                    description: "Removes selected item from trash",
+                },
+                {
+                    name: "Restore selected item",
+                    value: "RESTORE",
+                    description: "Restores selected item",
+                },
+                { name: "Restore All items", value: "RESTORE_ALL", description: "Restores all items." },
             ],
         });
         return choice.trim();
+    }
+    async uplooad_questions() {
+        const choice = await select({
+            message: `Upload:`,
+            choices: [
+                {
+                    name: "📁 File",
+                    value: "FILE",
+                    description: "Upload single file (file path required)",
+                },
+                {
+                    name: "📂 Folder",
+                    value: "FOLDER",
+                    description: "Upload folder with files (Folder path required)",
+                },
+                { name: "Back", value: "BACK" },
+            ],
+        });
+        return choice.trim();
+    }
+    async folder_questions(folder_name) {
+        const action = await select({
+            message: `📂 Choose action for folder ${chalk.cyan.underline(folder_name)}: `,
+            choices: [
+                { name: "Get Folder Content", value: "LIST" },
+                { name: "Rename Folder", value: "RENAME" },
+                {
+                    name: "Delete Folder",
+                    value: "DELETE",
+                    description: "Permanently delete or move to trash.",
+                },
+                {
+                    name: "Create folder",
+                    value: "CREATE",
+                    description: "Creates new folder with the selected folder as root",
+                },
+                { name: "Upload folder/file", value: "UPLOAD", description: "Upload a folder/file" },
+                { name: "Back", value: "BACK" },
+            ],
+        });
+        return action.trim();
+    }
+    async file_questions(folder_content) {
+        const file_action = await select({
+            message: `📁 Choose action for file ${chalk.cyan.underline(folder_content)}: `,
+            choices: [
+                { name: "Rename file", value: "RENAME" },
+                { name: "Delete file", value: "DELETE", description: "Delete selected file." },
+                { name: "Download file", value: "DOWNLOAD" },
+                { name: "Get file information", value: "INFO" },
+                // { name: "Open File", value: "OPEN" },
+                // { name: "Move File", value: "MOVE" },
+                { name: "Back", value: "BACK" },
+            ],
+        });
+        return file_action.trim();
     }
 }
 //# sourceMappingURL=clientQuestions.js.map

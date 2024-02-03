@@ -1,67 +1,144 @@
 import "dotenv/config";
 import select from "@inquirer/select";
-import { input } from "@inquirer/prompts";
+import { confirm } from "@inquirer/prompts";
 import { GoogleDriveService } from "./service/googleDriveService.js";
 import open from "open";
-import { createSpinner } from "nanospinner";
 import { ClientQuestions } from "./service/clientQuestions.js";
-import {
-  convertPathToStream,
-  convertUrlToStream,
-  getMimeType,
-  getUrlMimeType,
-} from "./utils/utils.js";
-import internal, { Readable } from "stream";
-import fs from "fs";
-import mime from "mime";
-import axios from "axios";
+import { convertPathToStream, getMimeType, parseMimeType } from "./utils/utils.js";
+import internal from "stream";
+import chalk from "chalk";
+import { DeleteOpts, UploadOpts } from "./types/types.js";
+import { types } from "util";
 
 const googleDrive = new GoogleDriveService();
-const clientQuestions = new ClientQuestions();
+const {
+  uplooad_questions,
+  trash_questions,
+  file_questions,
+  delete_questions,
+  folder_questions,
+  main_questions,
+  question,
+} = new ClientQuestions();
 
-const { ask_file_q, ask_folder_q, ask_main_q, ask_q, ask_upload_file_method } = clientQuestions;
-
-const handleFileActions = async (selected_folder: { name: string; id: string }) => {
-  console.clear();
+const processFileActions = async (selected_folder: { name: string; id: string }) => {
   const { id } = selected_folder;
-  const files = await googleDrive.getFolderContent(id);
+  const files = await googleDrive.listFolderFiles(id);
 
+  if (files.length === 0) {
+    console.log("This folder is empty! Feel free to upload content.");
+    processFolderActions(selected_folder.name);
+    return;
+  }
+
+  // name: file.name!!,
   const selected_file = await select({
     message: "Select File",
     choices: [
-      ...files.map((file) => ({ name: file.name || "", value: file })),
-      { name: "👈Back", value: { name: "BACK" } },
+      ...files.map((file) => ({
+        name: `${file.name} ${chalk.gray(`[${parseMimeType(file.mimeType!!)}]`)}` || "",
+        value: file,
+      })),
+      { name: "Back", value: { name: "BACK" } },
     ],
   });
 
   const { name, mimeType } = selected_file;
   if (name === "BACK") {
-    handleFolderActions();
+    processFolderActions(selected_folder.name);
     return;
   }
 
   if (mimeType === "application/vnd.google-apps.folder") {
-    handleFolderActions(name!!);
+    processFolderActions(name!!);
   } else {
-    const file_action_choice = await clientQuestions.ask_file_q(name!!);
-    console.log("File actions for: ", file_action_choice);
+    const file_action_choice = await file_questions(name!!);
+    if (file_action_choice === "BACK") {
+      processFileActions(selected_folder);
+      return;
+    }
+    console.log("WE NEED TO HANDLE FILE ACTIONS: ", file_action_choice);
   }
 };
 
-const handleFolderActions = async (name?: string) => {
-  console.clear();
+const processUploadActions = async (
+  choice: UploadOpts,
+  folder_id: string,
+  folder_name: string
+) => {
+  switch (choice) {
+    case "FILE":
+      let stream: internal.Readable | undefined;
+      let mime_type: string | undefined;
 
+      const file_name = await question({ message: "Provide the name of the new file: " });
+      const file_path = await question({
+        message: "Provide the location of the file on your machine: ",
+      });
+
+      const type = getMimeType(file_path);
+      if (!type) {
+        console.log(
+          "File path is invalid. Please check if you have entered the correct file path."
+        );
+        // processUploadActions(choice, folder_id, folder_name);
+        processFolderActions(folder_name);
+        return;
+      } else {
+        mime_type = type;
+        stream = await convertPathToStream(file_path);
+      }
+
+      if (file_name && mime_type && stream && folder_id) {
+        await googleDrive.uploadSingleFile(file_name, stream, folder_id, mime_type);
+      }
+      processFolderActions(folder_name);
+      break;
+    case "FOLDER":
+      console.log("Handle uploading folder.");
+      break;
+    case "BACK":
+      processFolderActions(folder_name);
+      break;
+  }
+};
+
+const processDeleteActions = async (choice: DeleteOpts, folder_id: string) => {
+  const actions = {
+    DELETE: async () => {
+      const confirmed = await confirm({
+        message: "Are you sure you want to permanently delete?",
+      });
+      if (confirmed) await googleDrive.deleteFolder(folder_id);
+      actions["BACK"];
+    },
+    TRASH: async () => {
+      const confirmed = await confirm({
+        message: "Are you sure you want to permanently delete?",
+      });
+      // if (confirmed) await googleDrive.moveToTrash
+
+      // console.log("Answer for TRASH: ", answer);
+      actions["BACK"];
+    },
+    BACK: () => processFolderActions(),
+  };
+
+  actions[choice];
+};
+
+const processFolderActions = async (name?: string) => {
   let folder_name = name;
+
   if (!folder_name) {
     const folders = await googleDrive.getRootFolders();
     if (!folders || folders.length === 0) return;
     folder_name = await select({
-      message: "Folders: ",
-      choices: [...folders, { name: "👈Back", value: "BACK" }],
+      message: "Your Drive folders: ",
+      choices: [...folders, { name: "Back", value: "BACK" }],
     });
-
     if (folder_name === "BACK") {
-      handleMainActions();
+      processMainActions();
       return;
     }
   }
@@ -69,84 +146,63 @@ const handleFolderActions = async (name?: string) => {
   const folder_id = await googleDrive.getFolderIdWithName(folder_name);
   const selected_folder = { name: folder_name, id: folder_id };
 
-  const folder_action = await ask_folder_q(selected_folder.name);
-  switch (folder_action) {
+  const folder_answer = await folder_questions(selected_folder.name);
+  switch (folder_answer) {
     case "RENAME":
-      const new_name = await input({ message: `Rename folder ${selected_folder.name}: ` });
+      const new_name = await question({ message: `Rename folder ${selected_folder.name}: ` });
       await googleDrive.renameFolder(new_name, selected_folder.id);
-      handleFolderActions();
+      processFolderActions();
       break;
-    case "READ":
-      handleFileActions(selected_folder);
-      break;
-    case "UPLOAD_FILE":
-      const choice = await ask_upload_file_method();
-
-      let stream: internal.Readable | internal.PassThrough;
-      let file_name: string;
-      let file_path: string;
-      let mime_type: string | undefined;
-
-      switch (choice) {
-        case "LOCAL":
-          file_name = await ask_q("Provide the name of the new file: ");
-          file_path = await ask_q("Provide the location of the file on your machine: ");
-
-          const mime = getMimeType(file_path);
-          if (!mime) {
-            console.log(
-              "File path is invalid. Please check if you have entered the correct file path."
-            );
-            ask_upload_file_method();
-            return;
-          }
-
-          mime_type = mime;
-          stream = await convertPathToStream(file_path);
-        case "URL":
-          file_name = await ask_q("Provide the name of the new file: ");
-          file_path = await ask_q("Provide the URL: ");
-
-          mime_type = await getUrlMimeType(file_path);
-          stream = await convertUrlToStream(file_path);
-      }
-
-      await googleDrive.uploadSingleFile(file_name, stream, selected_folder.id, mime_type);
-      // handleFolderActions();
+    case "LIST":
+      processFileActions(selected_folder);
       break;
     case "DELETE":
-      console.log("Deleting folder...");
-      const isSure = await ask_q("Are you sure?");
-      if (isSure) await googleDrive.deleteFolder(selected_folder.id);
-      handleFolderActions();
+      const answer = await delete_questions();
+      processDeleteActions(answer, folder_id);
+      //   message: `Are you sure you want to delete folder: ${chalk.cyan.underline(folder_name)}?`,
+      // });
+      // if (isSure) await googleDrive.deleteFolder(selected_folder.id);
+      // processFolderActions();
       break;
     case "CREATE":
-      const newName = await input({ message: "Enter new folder name: " });
-      await googleDrive.createFolder(newName);
-      handleFolderActions();
+      const newName = await question({ message: "Enter new folder name: " });
+      await googleDrive.createFolder(newName, selected_folder.id);
+      processFolderActions();
+      break;
+    case "UPLOAD":
+      const choice = await uplooad_questions();
+      processUploadActions(choice, folder_id, folder_name);
       break;
     case "BACK":
-      handleMainActions();
+      selected_folder.name ? processFolderActions() : processMainActions();
       break;
   }
 };
 
-const handleMainActions = async () => {
-  console.clear();
+const processTrashActions = async () => {
+  const answer = await trash_questions();
+  console.log("TODO: answer for trash: ", answer);
+};
 
-  const init_action = await ask_main_q();
-  switch (init_action) {
+const processMainActions = async () => {
+  console.clear();
+  const answer = await main_questions();
+  switch (answer) {
     case "CREATE":
-      const new_folder = await input({ message: "Enter new folder name: " });
-      await googleDrive.createFolder(new_folder.trim());
-      handleMainActions();
+      const new_folder = await question({ message: "Enter new folder name: " });
+      await googleDrive.createFolder(new_folder);
+      processMainActions();
       break;
-    case "READ":
-      handleFolderActions();
+    case "LIST":
+      processFolderActions();
+      break;
+    case "TRASH":
+      const action = await trash_questions();
+      console.log("You should do: ", action);
       break;
     case "OPEN_DRIVE":
-      handleMainActions();
       open("https://drive.google.com/drive/u/0/my-drive");
+      processMainActions();
       break;
     case "EXIT":
       process.exit();
@@ -155,5 +211,5 @@ const handleMainActions = async () => {
 
 (async () => {
   await googleDrive.authorize();
-  handleMainActions();
+  processMainActions();
 })();
