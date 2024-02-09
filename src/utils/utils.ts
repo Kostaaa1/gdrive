@@ -1,34 +1,79 @@
 import axios from "axios";
-import internal, { Readable, Stream } from "stream";
+import internal, { Readable } from "stream";
 import fs, { readdirSync } from "fs";
 import mime from "mime";
+import mimeType from "mime-types";
+// export function parseMimeType(mime_type: string): string {
+//   if (mime_type === "application/vnd.google-apps.folder") {
+//     return "folder";
+//   } else {
+//     return mime_type.split("/")[1];
+//   }
+// }
+// export function openFile(path: string) {
+// }
 
-export function parseMimeType(mime_type: string) {
-  switch (mime_type) {
-    case "image/jpeg":
-      return "jpg";
-    case "image/png":
-      return "png";
-    case "video/mp4":
-      return "mp4";
-    case "application/vnd.google-apps.folder":
-      return "folder";
-    default:
-      console.log("mime_type", mime_type);
-      return "Undefined type ??? (handle this)";
-  }
+export function formatDate(date: string) {
+  const formattedDate = new Date(date).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: "UTC",
+  });
+  return formattedDate;
 }
 
-export function getMimeType(file_path: string): string | null {
-  try {
-    const lastSlashIndex = file_path.lastIndexOf("/");
-    const paths = file_path.slice(0, lastSlashIndex);
-    const image_name = file_path.slice(lastSlashIndex + 1);
+export function convertBytes(bytes: string) {
+  const b = Number(bytes);
+  const KB = b / 1024;
+  const MB = KB / 1024;
+  const GB = MB / 1024;
+  const TB = GB / 1024;
 
-    if (fs.existsSync(paths)) {
-      const files = readdirSync(paths);
-      if (files.includes(image_name)) {
-        const mime_type = mime.getType(file_path);
+  const result = {
+    bytes,
+    KB: KB.toFixed(2),
+    MB: MB.toFixed(2),
+    GB: GB.toFixed(2),
+    TB: TB.toFixed(2),
+  };
+
+  const index = Object.entries(result).findIndex((x) => x[1][0] === "0");
+  const output = Object.entries(result)[index - 1];
+  return output[1].split(".")[0] + output[0];
+}
+
+export const checkIfFolder = (filePath: string) => {
+  return new Promise((resolve, reject) => {
+    fs.stat(filePath, (err, stats) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(stats.isDirectory());
+    });
+  });
+};
+
+export function parseFileExtension(name: string, mimeType: string): string {
+  const fileExt = mime.getExtension(mimeType);
+  const hasFileExtension = /\.[a-z]{3,4}$/i.test(name);
+  return !hasFileExtension ? `${name}.${fileExt}` : name;
+}
+
+export function getMimeType(filePath: string): string | null {
+  try {
+    const lastSlashIndex = filePath.lastIndexOf("/");
+    const dest = filePath.slice(0, lastSlashIndex);
+    const fileName = filePath.slice(lastSlashIndex + 1);
+
+    if (fs.existsSync(dest)) {
+      const files = readdirSync(dest);
+      if (files.includes(fileName)) {
+        const mime_type = mime.getType(filePath);
         return mime_type;
       } else {
         return null;
