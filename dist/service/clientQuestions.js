@@ -1,8 +1,6 @@
 import chalk from "chalk";
 import inquirer from "inquirer";
 import InterruptedPrompt from "inquirer-interrupted-prompt";
-// @ts-ignore
-import prompt from "inquirer-interactive-list-prompt";
 InterruptedPrompt.fromAll(inquirer);
 export class ClientQuestions {
     async confirm(message) {
@@ -218,87 +216,64 @@ export class ClientQuestions {
         ]);
         return answer.trim();
     }
-    async select_trash_file(files) {
+    async trash_file_question() {
         console.clear();
         const { answer } = await inquirer.prompt([
             {
                 type: "list",
-                pageSize: 10,
                 message: `Choose ${chalk.blueBright("Trash")} Action: `,
                 prefix: chalk.gray(" Press <ESC> to return back\n"),
                 name: "answer",
                 choices: [
                     { type: "separator" },
-                    ...files.map((file) => ({
-                        name: `${file.name} ${file.mimeType === "application/vnd.google-apps.folder" ? chalk.gray("(folder)") : ""}`,
-                        value: file,
-                    })),
-                ],
-            },
-        ]);
-        return answer.trim();
-    }
-    async trash_file_actions() {
-        console.clear();
-        const { answer } = await inquirer.prompt([
-            {
-                type: "list",
-                name: "answer",
-                message: "Restore the item or delete it forever",
-                prefix: chalk.gray(" Press <ESC> to return back\n"),
-                choices: [
-                    { name: "Restore item", value: "RESTORE" },
-                    { name: "Delete it forever", value: "DELETE" },
+                    { name: "Delete selected", value: "DELETE" },
+                    { name: "Restore selected", value: "RESTORE" },
                 ],
             },
         ]);
         return answer;
     }
-    async test(files) {
+    // public async trash_questions(
+    //   files: drive_v3.Schema$File[]
+    // ): Promise<drive_v3.Schema$File | "RESTORE" | "DELETE" | "BACK"> {
+    //   console.clear();
+    //   const answer = await prompt({
+    //     message: "Select an option:",
+    //     choices: [
+    //       ...files.map((file, id) => ({
+    //         name: ` ${file.name} ${
+    //           file.mimeType === "application/vnd.google-apps.folder" ? chalk.gray("(folder)") : ""
+    //         }`,
+    //         value: file.name,
+    //       })),
+    //       { name: " Restore all items", value: "RESTORE", key: "r" },
+    //       { name: " Delete all items forever", value: "DELETE", key: "d" },
+    //       { name: " Go back", value: "BACK", key: "b" },
+    //     ],
+    //     renderSelected: (choice: any) =>
+    //       `${chalk.blueBright(`❯${choice.name}  ${choice.key ? "(" + choice.key + ")" : ""}`)}`,
+    //     renderUnselected: (choice: any) =>
+    //       ` ${choice.name}  ${choice.key ? "(" + choice.key + ")" : ""}`,
+    //   });
+    //   return files.find((x) => x.name === answer) || answer;
+    // }
+    async trash_questions(files) {
         console.clear();
-        const answer = await prompt({
-            message: "Select an option:",
+        const { answer } = await inquirer.prompt({
+            message: "Select trash action: ",
+            name: "answer",
+            type: "list",
             choices: [
                 ...files.map((file, id) => ({
                     name: `${file.name} ${file.mimeType === "application/vnd.google-apps.folder" ? chalk.gray("(folder)") : ""}`,
-                    value: file,
+                    value: file.name,
                 })),
-                { name: "Restore all items", value: "run", key: "r" },
-                { name: "Delete all items forever", value: "delete", key: "d" },
+                { type: "separator" },
+                { name: "Restore all items", value: "RESTORE" },
+                { name: "Delete all items forever", value: "DELETE" },
             ],
-            renderSelected: (choice) => `${chalk.blueBright(` ❯ ${choice.name}  ${choice.key ? "(" + choice.key + ")" : ""}`)}`,
-            renderUnselected: (choice) => ` ${choice.name}  ${choice.key ? "(" + choice.key + ")" : ""}`,
         });
-        console.log(answer);
-        return answer;
-    }
-    async trash_questions() {
-        console.clear();
-        const { answer } = await inquirer.prompt([
-            {
-                type: "list",
-                pageSize: 10,
-                message: `Choose ${chalk.blueBright("Trash")} Action: `,
-                prefix: chalk.gray(" Press <ESC> to return back\n"),
-                name: "answer",
-                choices: [
-                    { type: "separator" },
-                    {
-                        name: "List items",
-                        value: "LIST",
-                    },
-                    {
-                        name: "Delete all forever",
-                        value: "DELETE",
-                    },
-                    {
-                        name: "Restore all items",
-                        value: "RESTORE",
-                    },
-                ],
-            },
-        ]);
-        return answer.trim();
+        return files.find((x) => x.name === answer) || answer;
     }
 }
 //# sourceMappingURL=clientQuestions.js.map

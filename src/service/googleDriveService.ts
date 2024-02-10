@@ -18,7 +18,7 @@ const {
 const { refresh_token } = JSON.parse(readFileSync("./token.json", "utf-8"));
 
 export class GoogleDriveService {
-  private drive_client: drive_v3.Drive;
+  public drive_client: drive_v3.Drive;
   private oatuh2Client;
 
   private static clientId = GOOGLE_CLIENT_ID;
@@ -276,9 +276,6 @@ export class GoogleDriveService {
 
   public async untrashAll(files: drive_v3.Schema$File[]) {
     console.log(files);
-    // for (const file in files) {
-    //   console.log(file);
-    // }
     for (const file of files) {
       await this.drive_client.files.update({ fileId: file.id!, requestBody: { trashed: false } });
     }

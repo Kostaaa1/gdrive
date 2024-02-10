@@ -7,7 +7,7 @@ import { exec, spawn } from "child_process";
 import chalk from "chalk";
 import fs from "fs";
 const googleDrive = new GoogleDriveService();
-const { file_questions_1, new_folder_questions, select_file, select_trash_file, trash_questions, upload_questions, delete_questions, confirm, folder_questions_1, folder_questions_2, test, trash_file_actions, main_questions, input, } = new ClientQuestions();
+const { file_questions_1, new_folder_questions, select_file, upload_questions, delete_questions, confirm, folder_questions_1, folder_questions_2, trash_questions, main_questions, input, trash_file_question, } = new ClientQuestions();
 const { log, error } = console;
 const handleSelectedFile = async (file, folder) => {
     try {
@@ -226,34 +226,51 @@ const handleNewFolder = async () => {
             break;
     }
 };
+const handleTrashFile = async (fileId) => {
+    try {
+        const choice = await trash_file_question();
+        const data = {
+            RESTORE: () => {
+                googleDrive.drive_client.files.update({
+                    fileId,
+                    requestBody: { trashed: false },
+                });
+            },
+            DELETE: () => {
+                googleDrive.drive_client.files.delete({ fileId: fileId });
+            },
+        };
+        await data[choice]();
+        processTrashActions();
+    }
+    catch (error) {
+        processTrashActions();
+    }
+};
 const processTrashActions = async () => {
-    // const action = await trash_questions();
     const items = await googleDrive.listFilesInTrash();
     if (items.length === 0) {
         log("Trash is empty!");
         await processMainActions();
     }
     else {
-        await test(items);
+        const answer = await trash_questions(items);
+        switch (answer) {
+            case "DELETE":
+                await googleDrive.deleteAllForever();
+                break;
+            case "RESTORE":
+                await googleDrive.untrashAll(items);
+                break;
+            case "BACK":
+                processMainActions();
+                break;
+            default:
+                const file = answer;
+                await handleTrashFile(file.id);
+                break;
+        }
     }
-    // switch (action) {
-    //   case "LIST":
-    //     if (items.length === 0) {
-    //       log("Trash is empty!");
-    //       await processMainActions();
-    //     } else {
-    //       const answer = await select_trash_file(items);
-    //       log(answer);
-    //     }
-    //     break;
-    //   case "DELETE":
-    //     await googleDrive.deleteAllForever();
-    //     break;
-    //   case "RESTORE":
-    //     await googleDrive.untrashAll(items);
-    //     break;
-    // }
-    // await processTrashActions();
 };
 const processMainActions = async () => {
     try {

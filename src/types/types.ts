@@ -14,5 +14,5 @@ export type ProcessFolderOpts = {
 export type DeleteOpts = "DELETE" | "TRASH";
 export type UploadOpts = "FOLDER" | "FILE";
 
-export type TrashActions = "LIST" | "DELETE" | "RESTORE";
-export type TrashItemActions = "RESTORE" | "DELETE";
+export type TrashActions = "DELETE" | "RESTORE";
+// export type TrashItemActions = "RESTORE" | "DELETE";

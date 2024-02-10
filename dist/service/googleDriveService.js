@@ -218,9 +218,6 @@ export class GoogleDriveService {
     }
     async untrashAll(files) {
         console.log(files);
-        // for (const file in files) {
-        //   console.log(file);
-        // }
         for (const file of files) {
             await this.drive_client.files.update({ fileId: file.id, requestBody: { trashed: false } });
         }
