@@ -6,9 +6,10 @@ import { checkIfFolder, convertPathToStream, convertUrlToStream, getMimeType, } 
 import { exec, spawn } from "child_process";
 import chalk from "chalk";
 import fs from "fs";
+import path from "path";
 const googleDrive = new GoogleDriveService();
-const { file_questions_1, new_folder_questions, select_file, upload_questions, delete_questions, confirm, folder_questions_1, folder_questions_2, trash_questions, main_questions, input, trash_file_question, } = new ClientQuestions();
-const { log, error } = console;
+const { file_questions_1, new_folder_questions, folder_questions_3, rename, select_file, upload_questions, delete_questions, confirm, folder_questions_1, folder_questions_2, trash_questions, main_questions, input, trash_file_question, } = new ClientQuestions();
+const stop = (ms = 500) => new Promise((res) => setTimeout(res, ms));
 const handleSelectedFile = async (file, folder) => {
     try {
         let { id, name, mimeType } = file;
@@ -22,10 +23,10 @@ const handleSelectedFile = async (file, folder) => {
                 await processDeleteActions(name, id);
                 break;
             case "RENAME":
-                const newName = await input("Enter new name: ");
+                const newName = await rename(name);
                 await googleDrive.rename(newName, id);
                 file.name = newName;
-                backFunc(file);
+                processFileActions(folder);
                 break;
             case "INFO":
                 await googleDrive.printFileInfo(id);
@@ -33,24 +34,34 @@ const handleSelectedFile = async (file, folder) => {
                 if (choice)
                     await handleSelectedFile(file, folder);
                 break;
+            case "MOVE":
+                const folders = await googleDrive.getRootFolders();
+                if (folders.length > 0 && id) {
+                    const message = `Select the folder where you want to move the file: ${chalk.blueBright(file.name)}`;
+                    const selectedFolder = await folder_questions_1(folders, message);
+                    const selectedFolderId = await googleDrive.getFolderIdWithName(selectedFolder);
+                    await googleDrive.moveFile(id, selectedFolderId);
+                }
+                backFunc(file);
+                break;
             case "DOWNLOAD":
                 let path = await input("Provide a destination where to store file: ");
-                const hasFileExtension = /\.[a-z]{3,4}$/i;
+                const hasFileExtension = /\.(mp4|jpg|jpeg|png|gif|pdf|docx)$/i;
                 if (!fs.existsSync(path)) {
-                    log("File path is invalid. Please check if you have entered the correct file path.");
+                    console.log("File path is invalid. Please check if you have entered the correct file path.");
                     backFunc(file);
                     return;
                 }
                 if (!path.endsWith("/"))
                     path += "/";
                 if (name && hasFileExtension.test(name)) {
-                    name = path + name;
+                    path = path + name;
                 }
                 else {
                     const suffix = "." + mimeType?.split("/")[1];
-                    name = path + name + suffix;
+                    path += name + suffix;
                 }
-                await googleDrive.downloadFile(name, id);
+                await googleDrive.downloadFile(path, id);
                 processFileActions(folder);
                 break;
         }
@@ -64,7 +75,7 @@ const processFileActions = async (folder) => {
         const { id: folderId, name: folderName } = folder;
         const files = await googleDrive.listFolderFiles(folderId);
         if (files.length === 0) {
-            log("This folder is empty!");
+            console.log("This folder is empty!");
             processFolderActions(folderName);
             return;
         }
@@ -104,7 +115,7 @@ const handleSingleUploadFolder = async (path, name, parentId) => {
         }
     }
     else {
-        log("Folder path was invalid. Make sure you enter the correct path!");
+        console.log("Folder path was invalid. Make sure you enter the correct path!");
     }
 };
 const processDeleteActions = async (folderName, folderId) => {
@@ -115,6 +126,7 @@ const processDeleteActions = async (folderName, folderId) => {
                 const confirmed = await confirm("Are you sure you want to delete forever the selected item?");
                 if (confirmed)
                     await googleDrive.deleteFolder(folderId);
+                processFolderActions(folderName);
             },
             TRASH: async () => {
                 const confirmed = await confirm(`Are you sure? ${chalk.gray("(in the next 30 days you will be able to recover it from)")}`);
@@ -137,11 +149,11 @@ const processUploadActions = async (folderId, folderName) => {
             case "FILE":
                 let stream;
                 let mimeType;
-                const fileName = await input("Provide the name of the new file: ");
                 const filePath = await input("Provide the location of the file on your machine: ");
+                const fileName = path.basename(filePath);
                 const type = getMimeType(filePath);
                 if (!type) {
-                    log("File path is invalid. Please check if you have entered the correct file path.");
+                    console.log("File path is invalid. Please check if you have entered the correct file path.");
                     processFolderActions(folderName);
                     break;
                 }
@@ -153,8 +165,8 @@ const processUploadActions = async (folderId, folderName) => {
                 processFolderActions(folderName);
                 break;
             case "FOLDER":
-                const path = await input("Provide folder path: ");
-                await handleSingleUploadFolder(path);
+                const folderPath = await input("Provide folder path: ");
+                handleSingleUploadFolder(folderPath);
                 break;
         }
     }
@@ -169,7 +181,8 @@ const processFolderActions = async (name) => {
         if (!folders || folders.length === 0)
             return;
         try {
-            folderName = await folder_questions_1(folders);
+            const message = "Your drive folders: ";
+            folderName = await folder_questions_1(folders, message);
         }
         catch (error) {
             processMainActions();
@@ -248,28 +261,32 @@ const handleTrashFile = async (fileId) => {
     }
 };
 const processTrashActions = async () => {
-    const items = await googleDrive.listFilesInTrash();
-    if (items.length === 0) {
-        log("Trash is empty!");
-        await processMainActions();
-    }
-    else {
-        const answer = await trash_questions(items);
-        switch (answer) {
-            case "DELETE":
-                await googleDrive.deleteAllForever();
-                break;
-            case "RESTORE":
-                await googleDrive.untrashAll(items);
-                break;
-            case "BACK":
-                processMainActions();
-                break;
-            default:
-                const file = answer;
-                await handleTrashFile(file.id);
-                break;
+    try {
+        const items = await googleDrive.listFilesInTrash();
+        if (items.length === 0) {
+            console.log("Trash is empty!");
+            await stop();
+            await processMainActions();
         }
+        else {
+            const answer = await trash_questions(items);
+            switch (answer) {
+                case "DELETE":
+                    await googleDrive.deleteAllForever();
+                    break;
+                case "RESTORE":
+                    await googleDrive.untrashAll(items);
+                    break;
+                default:
+                    const file = answer;
+                    await handleTrashFile(file.id);
+                    break;
+            }
+        }
+        processMainActions();
+    }
+    catch (error) {
+        processMainActions();
     }
 };
 const processMainActions = async () => {
@@ -279,8 +296,13 @@ const processMainActions = async () => {
             case "LIST":
                 await processFolderActions();
                 break;
-            case "CREATE":
+            case "NEW_FOLDER":
                 await handleNewFolder();
+                break;
+            case "NEW_FILE":
+                // const folders = await googleDrive.getAllFolders();
+                // const answer = await folder_questions_3(folders);
+                // console.log(answer);
                 break;
             case "OPEN":
                 const path = await input("Enter the path for the file you want to open: ");
@@ -311,26 +333,25 @@ const scrapeVideos = async () => {
     const url = await input("Enter the url to scrape videos from: ");
     const script = spawn("python3", ["scraper.py", "iframe", url]);
     script.stdout.on("data", (data) => {
-        log("Recieved data: ", data.toString());
+        console.log("Recieved data: ", data.toString());
         const s = spawn("python3", ["scraper.py", "video", `https:${data.toString()}`]);
         s.stdout.on("data", async (data) => {
-            log("Video url", data.toString());
+            console.log("Video url", data.toString());
             const url = JSON.parse(data.toString())[2];
             const stream = await convertUrlToStream(url);
             const folderId = await googleDrive.getFolderIdWithName("Ablum_1");
             await googleDrive.uploadSingleFile(url, stream, folderId, "video/mp4");
         });
         s.stderr.on("data", (data) => {
-            error("Stdout error: ", data);
+            console.error("Stdout error: ", data);
         });
     });
     script.stderr.on("data", (data) => {
-        error("Stdout error: ", data);
+        console.error("Stdout error: ", data);
     });
 };
 (async () => {
     await googleDrive.authorize();
     processMainActions();
-    // scrapeVideos();
 })();
 //# sourceMappingURL=index.js.map

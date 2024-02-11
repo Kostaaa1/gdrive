@@ -53,7 +53,7 @@ export const checkIfFolder = (filePath) => {
 };
 export function parseFileExtension(name, mimeType) {
     const fileExt = mime.getExtension(mimeType);
-    const hasFileExtension = /\.[a-z]{3,4}$/i.test(name);
+    const hasFileExtension = /\.(mp4|jpg|jpeg|png|gif|pdf|docx)$/i.test(name);
     return !hasFileExtension ? `${name}.${fileExt}` : name;
 }
 export function getMimeType(filePath) {

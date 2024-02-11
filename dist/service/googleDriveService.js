@@ -2,7 +2,7 @@ import { createWriteStream, readFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { google } from "googleapis";
 import readline from "readline-sync";
-import { convertBytes, formatDate, parseFileExtension, } from "../utils/utils.js";
+import { convertBytes, formatDate, parseFileExtension } from "../utils/utils.js";
 const { GOOGLE_CLIENT_ID = "", GOOGLE_CLIENT_SECRET = "", GOOGLE_REDIRECT_URL = "", } = process.env;
 const { refresh_token } = JSON.parse(readFileSync("./token.json", "utf-8"));
 export class GoogleDriveService {
@@ -51,6 +51,9 @@ export class GoogleDriveService {
         if (folders && folders?.length > 0) {
             return folders.map((x) => x.name && { name: x.name, value: x.name });
         }
+        else {
+            return [];
+        }
     }
     async listFolderFiles(folderId) {
         try {
@@ -88,9 +91,9 @@ export class GoogleDriveService {
                 q: `mimeType='application/vnd.google-apps.folder' and name='${folderName}'`,
                 fields: "files(id)",
             });
-            const file = response.data.files?.[0];
-            if (file && file.id) {
-                return file.id;
+            const folder = response.data.files?.[0];
+            if (folder && folder.id) {
+                return folder.id;
             }
             else {
                 console.log(`No folder found with name ${folderName}, creating it...`);
@@ -103,8 +106,34 @@ export class GoogleDriveService {
             throw new Error(`Error searching for folder: ${err}`);
         }
     }
+    async getFolderNameWithId(id) {
+        const res = await this.drive_client.files.get({ fileId: id, fields: "name" });
+        return res.data.name;
+    }
+    async getAllFolders() {
+        const res = await this.drive_client.files.list({
+            q: "mimeType='application/vnd.google-apps.folder'",
+            fields: "files(id, name, parents)",
+        });
+        const files = res.data.files;
+        const stack = [];
+        for (const file of files) {
+            const parents = file.parents;
+            let base = "";
+            for (const parentId of parents) {
+                const name = await this.getFolderNameWithId(parentId);
+                base += "/" + (name === "My Drive" ? "" : name);
+            }
+            delete file.parents;
+            stack.push({
+                id: file.id,
+                name: file.name,
+                path: base + (base.endsWith("/") ? file.name : `/${file.name}`),
+            });
+        }
+        return stack;
+    }
     async createFolder(folder_name, folder_id) {
-        // Returns created folder id (if needed, change the return data)
         const requestBody = {
             name: folder_name,
             mimeType: "application/vnd.google-apps.folder",
@@ -124,23 +153,19 @@ export class GoogleDriveService {
                 fields: "parents",
             });
             const previousParents = file?.data.parents.join(",");
-            const files = await this.drive_client.files.update({
+            await this.drive_client.files.update({
                 fileId: file_id,
                 addParents: folder_id,
                 removeParents: previousParents,
                 fields: "id, parents",
             });
-            console.log(files.status);
-            return files.status;
+            // return files.status;
         }
         catch (error) {
             console.log(error);
         }
     }
-    async downloadFile(path, driveFileId
-    // fileName: string,
-    // mimeType: string
-    ) {
+    async downloadFile(path, driveFileId) {
         try {
             const fileStream = createWriteStream(path);
             const file = await this.drive_client.files.get({ fileId: driveFileId, alt: "media" }, { responseType: "stream" });
@@ -217,7 +242,6 @@ export class GoogleDriveService {
         return response;
     }
     async untrashAll(files) {
-        console.log(files);
         for (const file of files) {
             await this.drive_client.files.update({ fileId: file.id, requestBody: { trashed: false } });
         }

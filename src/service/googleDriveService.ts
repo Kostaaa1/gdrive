@@ -2,12 +2,7 @@ import { createWriteStream, readFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { drive_v3, google } from "googleapis";
 import readline from "readline-sync";
-import {
-  convertBytes,
-  convertUrlToStream,
-  formatDate,
-  parseFileExtension,
-} from "../utils/utils.js";
+import { convertBytes, formatDate, parseFileExtension } from "../utils/utils.js";
 
 const {
   GOOGLE_CLIENT_ID = "",
@@ -67,7 +62,7 @@ export class GoogleDriveService {
     }
   }
 
-  public async getRootFolders(): Promise<{ name: string; value: string }[] | undefined> {
+  public async getRootFolders(): Promise<{ name: string; value: string }[]> {
     const res = await this.drive_client.files.list({
       q: "mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false",
       fields: "files(id, name)",
@@ -78,6 +73,8 @@ export class GoogleDriveService {
         name: string;
         value: string;
       }[];
+    } else {
+      return [];
     }
   }
 
@@ -119,9 +116,9 @@ export class GoogleDriveService {
         fields: "files(id)",
       });
 
-      const file = response.data.files?.[0];
-      if (file && file.id) {
-        return file.id;
+      const folder = response.data.files?.[0];
+      if (folder && folder.id) {
+        return folder.id;
       } else {
         console.log(`No folder found with name ${folderName}, creating it...`);
         const id = await this.createFolder(folderName);
@@ -133,8 +130,41 @@ export class GoogleDriveService {
     }
   }
 
+  public async getFolderNameWithId(id: string) {
+    const res = await this.drive_client.files.get({ fileId: id, fields: "name" });
+    return res.data.name;
+  }
+
+  public async getAllFolders() {
+    const res = await this.drive_client.files.list({
+      q: "mimeType='application/vnd.google-apps.folder'",
+      fields: "files(id, name, parents)",
+    });
+
+    const files = res.data.files;
+    const stack: { id: string; name: string; path: string }[] = [];
+
+    for (const file of files!) {
+      const parents = file.parents;
+      let base: string = "";
+
+      for (const parentId of parents!) {
+        const name = await this.getFolderNameWithId(parentId);
+        base += "/" + (name === "My Drive" ? "" : name);
+      }
+
+      delete file.parents;
+      stack.push({
+        id: file.id!,
+        name: file.name!,
+        path: base + (base.endsWith("/") ? file.name : `/${file.name}`),
+      });
+    }
+
+    return stack;
+  }
+
   public async createFolder(folder_name: string, folder_id?: string): Promise<string> {
-    // Returns created folder id (if needed, change the return data)
     const requestBody: { name: string; mimeType: string; parents?: string[] } = {
       name: folder_name,
       mimeType: "application/vnd.google-apps.folder",
@@ -144,7 +174,7 @@ export class GoogleDriveService {
       requestBody,
       fields: "id",
     });
-    return response.data.id as string;
+    return response.data.id!;
   }
 
   public async moveFile(file_id: string, folder_id: string) {
@@ -153,27 +183,21 @@ export class GoogleDriveService {
         fileId: file_id,
         fields: "parents",
       });
-      const previousParents = file?.data.parents!!.join(",");
-      const files = await this.drive_client.files.update({
+
+      const previousParents = file?.data.parents!.join(",");
+      await this.drive_client.files.update({
         fileId: file_id,
         addParents: folder_id,
         removeParents: previousParents,
         fields: "id, parents",
       });
-
-      console.log(files.status);
-      return files.status;
+      // return files.status;
     } catch (error) {
       console.log(error);
     }
   }
 
-  public async downloadFile(
-    path: string,
-    driveFileId: string
-    // fileName: string,
-    // mimeType: string
-  ) {
+  public async downloadFile(path: string, driveFileId: string) {
     try {
       const fileStream = createWriteStream(path);
       const file = await this.drive_client.files.get(
@@ -275,7 +299,6 @@ export class GoogleDriveService {
   }
 
   public async untrashAll(files: drive_v3.Schema$File[]) {
-    console.log(files);
     for (const file of files) {
       await this.drive_client.files.update({ fileId: file.id!, requestBody: { trashed: false } });
     }

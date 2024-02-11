@@ -4,7 +4,6 @@ import InterruptedPrompt from "inquirer-interrupted-prompt";
 InterruptedPrompt.fromAll(inquirer);
 export class ClientQuestions {
     async confirm(message) {
-        console.clear();
         const { bool } = await inquirer.prompt([{ message, type: "confirm", name: "bool" }]);
         return bool;
     }
@@ -15,10 +14,24 @@ export class ClientQuestions {
                 type: "input",
                 name: "answer",
                 message,
-                prefix: chalk.gray(" Press <ESC> to return back\n"),
+                prefix: chalk.gray(" Press <ESC> to return to previous page\n"),
             },
         ]);
         return answer.trim();
+    }
+    async rename(previousName) {
+        let { newName } = await inquirer.prompt({
+            type: "input",
+            name: "newName",
+            prefix: chalk.gray(" Press <ESC> to return to previous page\n"),
+            message: "Provide new name of the selected: ",
+        });
+        const hasFileExtension = /\.(mp4|jpg|jpeg|png|gif|pdf|docx)$/i;
+        if (hasFileExtension.test(previousName)) {
+            const base = previousName.split(".").slice(-1);
+            newName += `.${base}`;
+        }
+        return newName;
     }
     async main_questions() {
         console.clear();
@@ -32,15 +45,19 @@ export class ClientQuestions {
                 choices: [
                     { type: "separator" },
                     {
-                        name: "List all folders",
+                        name: "List root folders",
                         value: "LIST",
                     },
                     {
                         name: "New folder",
-                        value: "CREATE",
+                        value: "NEW_FOLDER ",
                     },
                     {
-                        name: "Open Google Drive",
+                        name: "New file",
+                        value: "NEW_FILE",
+                    },
+                    {
+                        name: "Open Google Drive in your browser",
                         value: "OPEN_DRIVE",
                     },
                     {
@@ -65,12 +82,12 @@ export class ClientQuestions {
         });
         return answer.trim();
     }
-    async folder_questions_1(folders) {
+    async folder_questions_1(folders, message) {
         console.clear();
         const { fileName } = await inquirer.prompt([
             {
-                message: "Your Drive Folders: ",
-                prefix: chalk.gray(" Press <ESC> to return back\n"),
+                message,
+                prefix: chalk.gray(" Press <ESC> to return to previous page\n"),
                 name: "fileName",
                 type: "list",
                 pageSize: 10,
@@ -84,7 +101,7 @@ export class ClientQuestions {
         const { answer } = await inquirer.prompt([
             {
                 message: `📂 Choose folder operation for ${chalk.blueBright.underline(folder_name)}: `,
-                prefix: chalk.gray(" Press <ESC> to return back\n"),
+                prefix: chalk.gray(" Press <ESC> to return to previous page\n"),
                 type: "list",
                 pageSize: 10,
                 name: "answer",
@@ -109,15 +126,15 @@ export class ClientQuestions {
     async new_folder_questions() {
         const { answer } = await inquirer.prompt([
             {
-                message: "Create or Upload folder: ",
-                prefix: chalk.gray(" Press <ESC> to return back\n"),
+                message: "Create / Upload folder: ",
+                prefix: chalk.gray(" Press <ESC> to return to previous page\n"),
                 name: "answer",
                 type: "list",
                 pageSize: 10,
                 choices: [
                     { type: "separator" },
                     { name: "📁 Create empty folder", value: "CREATE" },
-                    { name: "📁 Upload folder with the files to drive", value: "UPLOAD" },
+                    { name: "📁 Upload folder from your machine", value: "UPLOAD" },
                 ],
             },
         ]);
@@ -128,7 +145,7 @@ export class ClientQuestions {
         const { answer } = await inquirer.prompt([
             {
                 message: `📁 Choose file operation for ${chalk.blueBright.underline(folder_content)}: `,
-                prefix: chalk.gray(" Press <ESC> to return back\n"),
+                prefix: chalk.gray(" Press <ESC> to return to previous page\n"),
                 name: "answer",
                 type: "list",
                 pageSize: 10,
@@ -140,6 +157,10 @@ export class ClientQuestions {
                         value: "DELETE",
                     },
                     {
+                        name: "Move file",
+                        value: "MOVE",
+                    },
+                    {
                         name: "Download",
                         value: "DOWNLOAD",
                     },
@@ -149,12 +170,32 @@ export class ClientQuestions {
         ]);
         return answer.trim();
     }
+    async folder_questions_3(files) {
+        console.clear();
+        const { file } = await inquirer.prompt([
+            {
+                message: "Select File: ",
+                prefix: chalk.gray(" Press <ESC> to return to previous page\n"),
+                name: "file",
+                type: "list",
+                pageSize: 10,
+                choices: [
+                    { type: "separator" },
+                    ...files.map((file) => ({
+                        name: file.path,
+                        value: file,
+                    })),
+                ],
+            },
+        ]);
+        return file;
+    }
     async select_file(files) {
         console.clear();
         const { file } = await inquirer.prompt([
             {
                 message: "Select File: ",
-                prefix: chalk.gray(" Press <ESC> to return back\n"),
+                prefix: chalk.gray(" Press <ESC> to return to previous page\n"),
                 name: "file",
                 type: "list",
                 pageSize: 10,
@@ -176,7 +217,7 @@ export class ClientQuestions {
                 type: "list",
                 pageSize: 10,
                 message: "Do you want to permanently delete seleceted item or move it to trash",
-                prefix: chalk.gray(" Press <ESC> to return back\n"),
+                prefix: chalk.gray(" Press <ESC> to return to previous page\n"),
                 name: "answer",
                 choices: [
                     { type: "separator" },
@@ -197,20 +238,17 @@ export class ClientQuestions {
                 type: "list",
                 pageSize: 10,
                 message: "Upload: ",
-                prefix: chalk.gray(" Press <ESC> to return back\n"),
+                prefix: chalk.gray(" Press <ESC> to return to previous page\n"),
                 name: "answer",
                 choices: [
                     {
                         name: "📁 File",
                         value: "FILE",
-                        description: "Upload file (file path required)",
                     },
                     {
                         name: "📂 Folder",
                         value: "FOLDER",
-                        description: "Upload folder with files (folder path required)",
                     },
-                    { name: "Back", value: "BACK" },
                 ],
             },
         ]);
@@ -221,8 +259,8 @@ export class ClientQuestions {
         const { answer } = await inquirer.prompt([
             {
                 type: "list",
-                message: `Choose ${chalk.blueBright("Trash")} Action: `,
-                prefix: chalk.gray(" Press <ESC> to return back\n"),
+                message: `Choose ${chalk.blueBright.underline("Trash")} Action: `,
+                prefix: chalk.gray(" Press <ESC> to return to previous page.\n"),
                 name: "answer",
                 choices: [
                     { type: "separator" },
@@ -233,30 +271,6 @@ export class ClientQuestions {
         ]);
         return answer;
     }
-    // public async trash_questions(
-    //   files: drive_v3.Schema$File[]
-    // ): Promise<drive_v3.Schema$File | "RESTORE" | "DELETE" | "BACK"> {
-    //   console.clear();
-    //   const answer = await prompt({
-    //     message: "Select an option:",
-    //     choices: [
-    //       ...files.map((file, id) => ({
-    //         name: ` ${file.name} ${
-    //           file.mimeType === "application/vnd.google-apps.folder" ? chalk.gray("(folder)") : ""
-    //         }`,
-    //         value: file.name,
-    //       })),
-    //       { name: " Restore all items", value: "RESTORE", key: "r" },
-    //       { name: " Delete all items forever", value: "DELETE", key: "d" },
-    //       { name: " Go back", value: "BACK", key: "b" },
-    //     ],
-    //     renderSelected: (choice: any) =>
-    //       `${chalk.blueBright(`❯${choice.name}  ${choice.key ? "(" + choice.key + ")" : ""}`)}`,
-    //     renderUnselected: (choice: any) =>
-    //       ` ${choice.name}  ${choice.key ? "(" + choice.key + ")" : ""}`,
-    //   });
-    //   return files.find((x) => x.name === answer) || answer;
-    // }
     async trash_questions(files) {
         console.clear();
         const { answer } = await inquirer.prompt({
@@ -264,16 +278,41 @@ export class ClientQuestions {
             name: "answer",
             type: "list",
             choices: [
-                ...files.map((file, id) => ({
+                ...files.map((file) => ({
                     name: `${file.name} ${file.mimeType === "application/vnd.google-apps.folder" ? chalk.gray("(folder)") : ""}`,
                     value: file.name,
                 })),
                 { type: "separator" },
                 { name: "Restore all items", value: "RESTORE" },
                 { name: "Delete all items forever", value: "DELETE" },
+                { type: "separator" },
             ],
         });
         return files.find((x) => x.name === answer) || answer;
     }
 }
+// public async trash_questions(
+//   files: drive_v3.Schema$File[]
+// ): Promise<drive_v3.Schema$File | "RESTORE" | "DELETE" | "BACK"> {
+// console.clear();
+//   const answer = await prompt({
+//     message: "Select an option:",
+//     choices: [
+//       ...files.map((file, id) => ({
+//         name: ` ${file.name} ${
+//           file.mimeType === "application/vnd.google-apps.folder" ? chalk.gray("(folder)") : ""
+//         }`,
+//         value: file.name,
+//       })),
+//       { name: " Restore all items", value: "RESTORE", key: "r" },
+//       { name: " Delete all items forever", value: "DELETE", key: "d" },
+//       { name: " Go back", value: "BACK", key: "b" },
+//     ],
+//     renderSelected: (choice: any) =>
+//       `${chalk.blueBright(`❯${choice.name}  ${choice.key ? "(" + choice.key + ")" : ""}`)}`,
+//     renderUnselected: (choice: any) =>
+//       ` ${choice.name}  ${choice.key ? "(" + choice.key + ")" : ""}`,
+//   });
+//   return files.find((x) => x.name === answer) || answer;
+// }
 //# sourceMappingURL=clientQuestions.js.map
