@@ -2,16 +2,11 @@ import axios from "axios";
 import internal, { Readable } from "stream";
 import fs, { readdirSync } from "fs";
 import mime from "mime";
-import mimeType from "mime-types";
-// export function parseMimeType(mime_type: string): string {
-//   if (mime_type === "application/vnd.google-apps.folder") {
-//     return "folder";
-//   } else {
-//     return mime_type.split("/")[1];
-//   }
-// }
-// export function openFile(path: string) {
-// }
+import { exec } from "child_process";
+import { promisify } from "util";
+import open from "open";
+import path from "path";
+import { access, readdir } from "fs/promises";
 
 export function formatDate(date: string) {
   const formattedDate = new Date(date).toLocaleString("en-US", {
@@ -105,9 +100,9 @@ export async function convertUrlToStream(url: string): Promise<internal.PassThro
   return stream;
 }
 
-export async function convertPathToStream(path: string): Promise<internal.Readable> {
+export async function convertPathToStream(filePath: string): Promise<internal.Readable> {
   const stream = new Readable();
-  const fileStream = fs.createReadStream(path);
+  const fileStream = fs.createReadStream(filePath);
 
   fileStream
     .on("data", (chunk) => {
@@ -127,4 +122,52 @@ export async function convertPathToStream(path: string): Promise<internal.Readab
   };
 
   return stream;
+}
+
+async function findValidFile(dir: string, base: string) {
+  const files = await readdir(dir);
+  return files.find((x) => x.split(".")[0] === base);
+}
+
+export async function openFile(filePath: string) {
+  console.log("init path: ", filePath);
+  const dir = path.dirname(filePath);
+  let base = path.basename(filePath);
+
+  const extensionRegex = /\.(mp4|jpg|jpeg|png|gif|pdf|docx)$/i;
+  const hasFileExtension = extensionRegex.test(base);
+
+  if (!hasFileExtension) {
+    const validBase = await findValidFile(dir, base);
+    if (validBase) {
+      base = validBase;
+    } else {
+      console.log("Path invalid. Make sure you are using the existing filePath.");
+      return;
+    }
+  }
+
+  const newPath = path.join(dir, base);
+  if (!fs.existsSync(dir) || !fs.existsSync(newPath)) {
+    console.log("Path invalid. Make sure you are using the existing filePath.");
+    return;
+  }
+
+  switch (process.platform) {
+    case "win32":
+      await open(newPath);
+      break;
+    case "linux":
+      try {
+        await promisify(exec)(`xdg-open ${newPath}`);
+      } catch (error) {
+        console.error(
+          "Failed to open with xdg-open, check if you have se the default media player in your linux environment"
+        );
+      }
+      break;
+    default:
+      console.log("Unsupported platform for automatic file opening.");
+      break;
+  }
 }

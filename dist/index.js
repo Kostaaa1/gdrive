@@ -1,14 +1,12 @@
 import "dotenv/config";
 import { GoogleDriveService } from "./service/googleDriveService.js";
-import open from "open";
 import { ClientQuestions } from "./service/clientQuestions.js";
-import { checkIfFolder, convertPathToStream, convertUrlToStream, getMimeType, } from "./utils/utils.js";
-import { exec, spawn } from "child_process";
+import { checkIfFolder, convertPathToStream, getMimeType, } from "./utils/utils.js";
 import chalk from "chalk";
 import fs from "fs";
 import path from "path";
 const googleDrive = new GoogleDriveService();
-const { file_questions_1, new_folder_questions, folder_questions_3, rename, select_file, upload_questions, delete_questions, confirm, folder_questions_1, folder_questions_2, trash_questions, main_questions, input, trash_file_question, } = new ClientQuestions();
+const { file_questions_1, new_folder_questions, test, folder_questions_3, rename, select_file, upload_questions, delete_questions, confirm, folder_questions_1, folder_questions_2, trash_questions, main_questions, input, trash_file_question, } = new ClientQuestions();
 const stop = (ms = 500) => new Promise((res) => setTimeout(res, ms));
 const handleSelectedFile = async (file, folder) => {
     try {
@@ -123,16 +121,16 @@ const processDeleteActions = async (folderName, folderId) => {
         const choice = await delete_questions();
         const actions = {
             DELETE: async () => {
-                const confirmed = await confirm("Are you sure you want to delete forever the selected item?");
+                const confirmed = await confirm("Are you sure that you want to delete selceted item forver?");
                 if (confirmed)
                     await googleDrive.deleteFolder(folderId);
-                processFolderActions(folderName);
+                await processFolderActions();
             },
             TRASH: async () => {
                 const confirmed = await confirm(`Are you sure? ${chalk.gray("(in the next 30 days you will be able to recover it from)")}`);
                 if (confirmed) {
                     await googleDrive.moveToTrash(folderId);
-                    processFolderActions(folderName);
+                    await processFolderActions();
                 }
             },
         };
@@ -172,6 +170,41 @@ const processUploadActions = async (folderId, folderName) => {
     }
     catch (error) {
         processFolderActions(folderName);
+    }
+};
+const handleNewFolder = async () => {
+    const choice = await new_folder_questions();
+    switch (choice) {
+        case "CREATE":
+            const newFolder = await input("Enter new folder name: ");
+            await googleDrive.createFolder(newFolder);
+            processMainActions();
+            break;
+        case "UPLOAD":
+            const path = await input("Provide folder path: ");
+            await handleSingleUploadFolder(path);
+            break;
+    }
+};
+const handleTrashFile = async (fileId) => {
+    try {
+        const choice = await trash_file_question();
+        const data = {
+            RESTORE: async () => {
+                googleDrive.drive_client.files.update({
+                    fileId,
+                    requestBody: { trashed: false },
+                });
+            },
+            DELETE: async () => {
+                googleDrive.drive_client.files.delete({ fileId: fileId });
+            },
+        };
+        await data[choice]();
+        processTrashActions();
+    }
+    catch (error) {
+        processTrashActions();
     }
 };
 const processFolderActions = async (name) => {
@@ -225,44 +258,9 @@ const processFolderActions = async (name) => {
         processFolderActions();
     }
 };
-const handleNewFolder = async () => {
-    const choice = await new_folder_questions();
-    switch (choice) {
-        case "CREATE":
-            const newFolder = await input("Enter new folder name: ");
-            await googleDrive.createFolder(newFolder);
-            processMainActions();
-            break;
-        case "UPLOAD":
-            const path = await input("Provide folder path: ");
-            await handleSingleUploadFolder(path);
-            break;
-    }
-};
-const handleTrashFile = async (fileId) => {
-    try {
-        const choice = await trash_file_question();
-        const data = {
-            RESTORE: () => {
-                googleDrive.drive_client.files.update({
-                    fileId,
-                    requestBody: { trashed: false },
-                });
-            },
-            DELETE: () => {
-                googleDrive.drive_client.files.delete({ fileId: fileId });
-            },
-        };
-        await data[choice]();
-        processTrashActions();
-    }
-    catch (error) {
-        processTrashActions();
-    }
-};
 const processTrashActions = async () => {
     try {
-        const items = await googleDrive.listFilesInTrash();
+        const items = await googleDrive.listTrashFiles();
         if (items.length === 0) {
             console.log("Trash is empty!");
             await stop();
@@ -272,7 +270,7 @@ const processTrashActions = async () => {
             const answer = await trash_questions(items);
             switch (answer) {
                 case "DELETE":
-                    await googleDrive.deleteAllForever();
+                    await googleDrive.deleteTrashForever();
                     break;
                 case "RESTORE":
                     await googleDrive.untrashAll(items);
@@ -283,10 +281,10 @@ const processTrashActions = async () => {
                     break;
             }
         }
-        processMainActions();
+        await processMainActions();
     }
     catch (error) {
-        processMainActions();
+        await processMainActions();
     }
 };
 const processMainActions = async () => {
@@ -296,31 +294,25 @@ const processMainActions = async () => {
             case "LIST":
                 await processFolderActions();
                 break;
-            case "NEW_FOLDER":
-                await handleNewFolder();
-                break;
-            case "NEW_FILE":
-                // const folders = await googleDrive.getAllFolders();
-                // const answer = await folder_questions_3(folders);
-                // console.log(answer);
-                break;
-            case "OPEN":
-                const path = await input("Enter the path for the file you want to open: ");
-                const os = process.platform;
-                if (os === "win32") {
-                    open(path);
-                }
-                else if (os === "linux") {
-                    exec(`xdg-open ${path}`);
-                }
-                break;
-            case "TRASH":
-                await processTrashActions();
-                break;
-            case "OPEN_DRIVE":
-                open("https://drive.google.com/drive/u/0/my-drive");
-                processMainActions();
-                break;
+            // case "NEW_FOLDER":
+            //   await handleNewFolder();
+            //   break;
+            // case "NEW_FILE":
+            //   const folders = await googleDrive.getAllFolders();
+            //   const answer = await folder_questions_3(folders);
+            //   break;
+            // case "OPEN":
+            //   const path = await input("Enter the path for the file you want to open: ");
+            //   await openFile(path);
+            //   await processMainActions();
+            //   break;
+            // case "TRASH":
+            //   await processTrashActions();
+            //   break;
+            // case "OPEN_DRIVE":
+            //   await open("https://drive.google.com/drive/u/0/my-drive");
+            //   processMainActions();
+            //   break;
             case "EXIT":
                 process.exit();
         }
@@ -329,29 +321,30 @@ const processMainActions = async () => {
         processMainActions();
     }
 };
-const scrapeVideos = async () => {
-    const url = await input("Enter the url to scrape videos from: ");
-    const script = spawn("python3", ["scraper.py", "iframe", url]);
-    script.stdout.on("data", (data) => {
-        console.log("Recieved data: ", data.toString());
-        const s = spawn("python3", ["scraper.py", "video", `https:${data.toString()}`]);
-        s.stdout.on("data", async (data) => {
-            console.log("Video url", data.toString());
-            const url = JSON.parse(data.toString())[2];
-            const stream = await convertUrlToStream(url);
-            const folderId = await googleDrive.getFolderIdWithName("Ablum_1");
-            await googleDrive.uploadSingleFile(url, stream, folderId, "video/mp4");
-        });
-        s.stderr.on("data", (data) => {
-            console.error("Stdout error: ", data);
-        });
-    });
-    script.stderr.on("data", (data) => {
-        console.error("Stdout error: ", data);
-    });
-};
 (async () => {
-    await googleDrive.authorize();
-    processMainActions();
+    // await googleDrive.authorize();
+    // processMainActions();
+    await test();
 })();
+// const scrapeVideos = async () => {
+//   const url = await input("Enter the url to scrape videos from: ");
+//   const script = spawn("python3", ["scraper.py", "iframe", url]);
+//   script.stdout.on("data", (data) => {
+//     console.log("Recieved data: ", data.toString());
+//     const s = spawn("python3", ["scraper.py", "video", `https:${data.toString()}`]);
+//     s.stdout.on("data", async (data) => {
+//       console.log("Video url", data.toString());
+//       const url = JSON.parse(data.toString())[2];
+//       const stream = await convertUrlToStream(url);
+//       const folderId = await googleDrive.getFolderIdWithName("Ablum_1");
+//       await googleDrive.uploadSingleFile(url, stream, folderId, "video/mp4");
+//     });
+//     s.stderr.on("data", (data) => {
+//       console.error("Stdout error: ", data);
+//     });
+//   });
+//   script.stderr.on("data", (data) => {
+//     console.error("Stdout error: ", data);
+//   });
+// };
 //# sourceMappingURL=index.js.map

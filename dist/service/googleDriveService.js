@@ -237,7 +237,7 @@ export class GoogleDriveService {
         console.log("Info:\n", "Id:", `${id}\n`, "Name:", `${name}\n`, "Size:", `${convertedSize}\n`, "Type:", `${mimeType}\n`, "Created time:", `${formatDate(createdTime)}\n`);
     }
     // TRASH:
-    async deleteAllForever() {
+    async deleteTrashForever() {
         const response = await this.drive_client.files.emptyTrash({});
         return response;
     }
@@ -246,7 +246,7 @@ export class GoogleDriveService {
             await this.drive_client.files.update({ fileId: file.id, requestBody: { trashed: false } });
         }
     }
-    async listFilesInTrash() {
+    async listTrashFiles() {
         const res = await this.drive_client.files.list({
             q: "trashed=true",
             fields: "files(id, name, mimeType)",

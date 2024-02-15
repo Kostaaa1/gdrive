@@ -293,7 +293,7 @@ export class GoogleDriveService {
   }
 
   // TRASH:
-  public async deleteAllForever() {
+  public async deleteTrashForever() {
     const response = await this.drive_client.files.emptyTrash({});
     return response;
   }
@@ -304,7 +304,7 @@ export class GoogleDriveService {
     }
   }
 
-  public async listFilesInTrash(): Promise<drive_v3.Schema$File[]> {
+  public async listTrashFiles(): Promise<drive_v3.Schema$File[]> {
     const res = await this.drive_client.files.list({
       q: "trashed=true",
       fields: "files(id, name, mimeType)",

@@ -8,11 +8,12 @@ import {
   TrashActions,
   UploadOpts,
 } from "../types/types.js";
+import { Separator } from "@inquirer/core";
 import chalk from "chalk";
 import type { drive_v3 } from "googleapis";
 import inquirer from "inquirer";
 import InterruptedPrompt from "inquirer-interrupted-prompt";
-import path from "path";
+import interactivePrompt from "../custom/interactivePrompt.js";
 
 InterruptedPrompt.fromAll(inquirer);
 
@@ -67,26 +68,26 @@ export class ClientQuestions {
               name: "List root folders",
               value: "LIST",
             },
-            {
-              name: "New folder",
-              value: "NEW_FOLDER ",
-            },
-            {
-              name: "New file",
-              value: "NEW_FILE",
-            },
-            {
-              name: "Open Google Drive in your browser",
-              value: "OPEN_DRIVE",
-            },
-            {
-              name: "Manage Trash",
-              value: "TRASH",
-            },
-            {
-              name: "Open File from your machine",
-              value: "OPEN",
-            },
+            // {
+            //   name: "New folder",
+            //   value: "NEW_FOLDER ",
+            // },
+            // {
+            //   name: "New file",
+            //   value: "NEW_FILE",
+            // },
+            // {
+            //   name: "Open Google Drive in your browser",
+            //   value: "OPEN_DRIVE",
+            // },
+            // {
+            //   name: "Manage Trash",
+            //   value: "TRASH",
+            // },
+            // {
+            //   name: "Open File from your machine",
+            //   value: "OPEN",
+            // },
             {
               name: "Exit",
               value: "EXIT",
@@ -100,6 +101,26 @@ export class ClientQuestions {
         }
       });
     return answer.trim() as MainActions;
+  }
+
+  public async test() {
+    const answer = await interactivePrompt({
+      message: "Select an option:",
+      choices: [
+        { name: "img1", value: "img1" },
+        { name: "img2", value: "img1" },
+        { name: "img3", value: "img1" },
+        { name: "img4", value: "img1" },
+        { name: "img5", value: "img1" },
+        { name: "img6", value: "img1" },
+        new Separator(),
+        { name: "Delete", value: "dsa", key: "x" },
+        { name: "Upload", value: "dsa", key: "y" },
+      ],
+      // renderSelected: (choice) => `❯ ${choice.name} (${choice.key})`,
+      // renderUnselected: (choice) => `  ${choice.name} (${choice.key})`,
+    });
+    console.log(`Selected option: ${answer}`);
   }
 
   public async folder_questions_1(
@@ -162,7 +183,10 @@ export class ClientQuestions {
         choices: [
           { type: "separator" },
           { name: "📁 Create empty folder", value: "CREATE" },
-          { name: "📁 Upload folder from your machine", value: "UPLOAD" },
+          {
+            name: "📁 Upload folder from your machine",
+            value: "UPLOAD",
+          },
         ],
       },
     ]);
@@ -316,6 +340,7 @@ export class ClientQuestions {
       message: "Select trash action: ",
       name: "answer",
       type: "list",
+      pageSize: 12,
       choices: [
         ...files.map((file) => ({
           name: `${file.name} ${
@@ -332,28 +357,3 @@ export class ClientQuestions {
     return files.find((x) => x.name === answer) || answer;
   }
 }
-
-// public async trash_questions(
-//   files: drive_v3.Schema$File[]
-// ): Promise<drive_v3.Schema$File | "RESTORE" | "DELETE" | "BACK"> {
-// console.clear();
-//   const answer = await prompt({
-//     message: "Select an option:",
-//     choices: [
-//       ...files.map((file, id) => ({
-//         name: ` ${file.name} ${
-//           file.mimeType === "application/vnd.google-apps.folder" ? chalk.gray("(folder)") : ""
-//         }`,
-//         value: file.name,
-//       })),
-//       { name: " Restore all items", value: "RESTORE", key: "r" },
-//       { name: " Delete all items forever", value: "DELETE", key: "d" },
-//       { name: " Go back", value: "BACK", key: "b" },
-//     ],
-//     renderSelected: (choice: any) =>
-//       `${chalk.blueBright(`❯${choice.name}  ${choice.key ? "(" + choice.key + ")" : ""}`)}`,
-//     renderUnselected: (choice: any) =>
-//       ` ${choice.name}  ${choice.key ? "(" + choice.key + ")" : ""}`,
-//   });
-//   return files.find((x) => x.name === answer) || answer;
-// }
