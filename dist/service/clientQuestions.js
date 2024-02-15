@@ -62,10 +62,10 @@ export class ClientQuestions {
                     //   name: "Open Google Drive in your browser",
                     //   value: "OPEN_DRIVE",
                     // },
-                    // {
-                    //   name: "Manage Trash",
-                    //   value: "TRASH",
-                    // },
+                    {
+                        name: "Manage Trash",
+                        value: "TRASH",
+                    },
                     // {
                     //   name: "Open File from your machine",
                     //   value: "OPEN",
@@ -83,25 +83,6 @@ export class ClientQuestions {
             }
         });
         return answer.trim();
-    }
-    async test() {
-        const answer = await interactivePrompt({
-            message: "Select an option:",
-            choices: [
-                { name: "img1", value: "img1" },
-                { name: "img2", value: "img1" },
-                { name: "img3", value: "img1" },
-                { name: "img4", value: "img1" },
-                { name: "img5", value: "img1" },
-                { name: "img6", value: "img1" },
-                new Separator(),
-                { name: "Delete", value: "dsa", key: "x" },
-                { name: "Upload", value: "dsa", key: "y" },
-            ],
-            // renderSelected: (choice) => `❯ ${choice.name} (${choice.key})`,
-            // renderUnselected: (choice) => `  ${choice.name} (${choice.key})`,
-        });
-        console.log(`Selected option: ${answer}`);
     }
     async folder_questions_1(folders, message) {
         console.clear();
@@ -297,20 +278,20 @@ export class ClientQuestions {
     }
     async trash_questions(files) {
         console.clear();
-        const { answer } = await inquirer.prompt({
-            message: "Select trash action: ",
-            name: "answer",
-            type: "list",
+        const answer = await interactivePrompt({
+            message: "Select trash action or select action: ",
             pageSize: 12,
+            prefix: chalk.gray(" Press <ESC> to return to previous page.\n"),
             choices: [
                 ...files.map((file) => ({
                     name: `${file.name} ${file.mimeType === "application/vnd.google-apps.folder" ? chalk.gray("(folder)") : ""}`,
                     value: file.name,
                 })),
-                { type: "separator" },
-                { name: "Restore all items", value: "RESTORE" },
-                { name: "Delete all items forever", value: "DELETE" },
-                { type: "separator" },
+            ],
+            actions: [
+                new Separator(),
+                { name: "Restore all items", value: "RESTORE", key: "r" },
+                { name: "Delete all items forever", value: "DELETE", key: "d" },
             ],
         });
         return files.find((x) => x.name === answer) || answer;

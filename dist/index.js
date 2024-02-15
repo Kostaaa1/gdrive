@@ -6,7 +6,7 @@ import chalk from "chalk";
 import fs from "fs";
 import path from "path";
 const googleDrive = new GoogleDriveService();
-const { file_questions_1, new_folder_questions, test, folder_questions_3, rename, select_file, upload_questions, delete_questions, confirm, folder_questions_1, folder_questions_2, trash_questions, main_questions, input, trash_file_question, } = new ClientQuestions();
+const { file_questions_1, new_folder_questions, folder_questions_3, rename, select_file, upload_questions, delete_questions, confirm, folder_questions_1, folder_questions_2, trash_questions, main_questions, input, trash_file_question, } = new ClientQuestions();
 const stop = (ms = 500) => new Promise((res) => setTimeout(res, ms));
 const handleSelectedFile = async (file, folder) => {
     try {
@@ -186,27 +186,6 @@ const handleNewFolder = async () => {
             break;
     }
 };
-const handleTrashFile = async (fileId) => {
-    try {
-        const choice = await trash_file_question();
-        const data = {
-            RESTORE: async () => {
-                googleDrive.drive_client.files.update({
-                    fileId,
-                    requestBody: { trashed: false },
-                });
-            },
-            DELETE: async () => {
-                googleDrive.drive_client.files.delete({ fileId: fileId });
-            },
-        };
-        await data[choice]();
-        processTrashActions();
-    }
-    catch (error) {
-        processTrashActions();
-    }
-};
 const processFolderActions = async (name) => {
     let folderName = name;
     if (!folderName) {
@@ -258,30 +237,56 @@ const processFolderActions = async (name) => {
         processFolderActions();
     }
 };
+const handleTrashFile = async (fileId) => {
+    try {
+        const choice = await trash_file_question();
+        const data = {
+            RESTORE: async () => {
+                await googleDrive.drive_client.files.update({
+                    fileId,
+                    requestBody: { trashed: false },
+                });
+            },
+            DELETE: async () => {
+                await googleDrive.drive_client.files.delete({ fileId: fileId });
+            },
+        };
+        await data[choice]();
+        await processTrashActions();
+    }
+    catch (error) {
+        await processTrashActions();
+    }
+};
 const processTrashActions = async () => {
     try {
         const items = await googleDrive.listTrashFiles();
         if (items.length === 0) {
-            console.log("Trash is empty!");
             await stop();
             await processMainActions();
         }
         else {
             const answer = await trash_questions(items);
-            switch (answer) {
-                case "DELETE":
-                    await googleDrive.deleteTrashForever();
-                    break;
-                case "RESTORE":
-                    await googleDrive.untrashAll(items);
-                    break;
-                default:
-                    const file = answer;
-                    await handleTrashFile(file.id);
-                    break;
+            if (answer) {
+                switch (answer) {
+                    case "DELETE":
+                        await googleDrive.deleteTrashForever();
+                        await processMainActions();
+                        break;
+                    case "RESTORE":
+                        await googleDrive.untrashAll(items);
+                        await processMainActions();
+                        break;
+                    default:
+                        const file = answer;
+                        await handleTrashFile(file.id);
+                        break;
+                }
+            }
+            else {
+                await processMainActions();
             }
         }
-        await processMainActions();
     }
     catch (error) {
         await processMainActions();
@@ -306,12 +311,12 @@ const processMainActions = async () => {
             //   await openFile(path);
             //   await processMainActions();
             //   break;
-            // case "TRASH":
-            //   await processTrashActions();
-            //   break;
+            case "TRASH":
+                await processTrashActions();
+                break;
             // case "OPEN_DRIVE":
             //   await open("https://drive.google.com/drive/u/0/my-drive");
-            //   processMainActions();
+            //   await processMainActions();
             //   break;
             case "EXIT":
                 process.exit();
@@ -322,9 +327,8 @@ const processMainActions = async () => {
     }
 };
 (async () => {
-    // await googleDrive.authorize();
-    // processMainActions();
-    await test();
+    await googleDrive.authorize();
+    await processMainActions();
 })();
 // const scrapeVideos = async () => {
 //   const url = await input("Enter the url to scrape videos from: ");

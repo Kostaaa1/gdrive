@@ -247,6 +247,7 @@ export class GoogleDriveService {
         }
     }
     async listTrashFiles() {
+        console.log("called listTrashed FILES");
         const res = await this.drive_client.files.list({
             q: "trashed=true",
             fields: "files(id, name, mimeType)",

@@ -18,6 +18,7 @@ import type { PartialDeep } from "@inquirer/type";
 import chalk from "chalk";
 import figures from "figures";
 import ansiEscapes from "ansi-escapes";
+import { ClientQuestions } from "../service/clientQuestions.js";
 
 const selectTheme: SelectTheme = {
   icon: { cursor: figures.pointer },
@@ -41,37 +42,40 @@ type Choice<Value> = {
   description?: string;
   disabled?: boolean | string;
   type?: never;
-  key?: string;
+};
+
+type KeyChoice<Value> = {
+  value: Value;
+  key: string;
+  name?: string;
+  description?: string;
+  disabled?: boolean | string;
+  type?: never;
 };
 
 type SelectConfig<Value> = {
   message: string;
   choices: ReadonlyArray<Choice<Value> | Separator>;
+  actions?: ReadonlyArray<KeyChoice<Value> | Separator>;
   pageSize?: number;
   loop?: boolean;
   default?: unknown;
   theme?: PartialDeep<Theme<SelectTheme>>;
+  prefix?: string;
 };
 
 export default async <Value>(options: SelectConfig<Value>) => {
-  const renderAction = (choice: Choice<Value>) => ` ${choice.name} [${choice.key}]`;
-
   const answer = await createPrompt<Value, SelectConfig<Value>>(
     (config: SelectConfig<Value>, done: (value: Value) => void): string => {
       const { isSeparator } = Separator;
-      const { choices, loop = true, pageSize = 10 } = config;
+      const { choices: items, loop = true, pageSize = 10, actions, prefix: initPrefix } = config;
       const firstRender = useRef(true);
       const theme = makeTheme<SelectTheme>(selectTheme, config.theme);
-      const prefix = usePrefix({ theme });
+      const prefix = initPrefix || usePrefix({ theme });
       const [status, setStatus] = useState("pending");
-
-      // @ts-ignore
-      const items = choices.filter((x) => !x.key);
-      const keyItems = choices.filter((x) => !items.includes(x));
 
       const bounds = useMemo(() => {
         const first = items.findIndex(isSelectable);
-        // TODO: Replace with `findLastIndex` when it's available.
         const last = items.length - 1 - [...items].reverse().findIndex(isSelectable);
         if (first < 0)
           throw new Error("[select prompt] No selectable choices. All choices are disabled.");
@@ -87,7 +91,8 @@ export default async <Value>(options: SelectConfig<Value>) => {
       );
 
       const selectedChoice = items[active] as Choice<Value>;
-      useKeypress((key, _rl) => {
+
+      useKeypress(async (key, _rl) => {
         if (isEnterKey(key)) {
           setStatus("done");
           done(selectedChoice.value);
@@ -110,11 +115,13 @@ export default async <Value>(options: SelectConfig<Value>) => {
           if (item != null && isSelectable(item)) {
             setActive(position);
           }
+        } else if (key.name === "escape") {
+          setStatus("done");
+          done(null as Value);
         } else {
-          const keyChoice = keyItems.find((x) => !isSeparator(x) && x.key === key.name);
-          if (keyChoice) {
+          const keyChoice = actions?.find((x) => !isSeparator(x) && x.key === key.name);
+          if (keyChoice && !isSeparator(keyChoice)) {
             setStatus("done");
-            //@ts-ignore
             done(keyChoice.value);
           }
         }
@@ -157,14 +164,21 @@ export default async <Value>(options: SelectConfig<Value>) => {
         return `${prefix} ${message} ${theme.style.answer(answer)}`;
       }
 
-      const keyActions = keyItems.map((x) => !isSeparator(x) && renderAction(x)).join("\n");
+      const renderAction = (choice: KeyChoice<Value>) =>
+        chalk.greenBright(`${choice.name} [${choice.key}]`);
+
+      const keyActions =
+        actions && actions?.length > 0
+          ? actions?.map((x) => (!isSeparator(x) ? renderAction(x) : x.separator)).join("\n")
+          : "";
+
       const choiceDescription = selectedChoice.description
         ? `\n${selectedChoice.description}`
         : ``;
 
-      return `${[prefix, message, helpTip]
-        .filter(Boolean)
-        .join(" ")}\n${page}${choiceDescription}${ansiEscapes.cursorHide}\n${keyActions}`;
+      return `${[prefix, message, helpTip].filter(Boolean).join(" ")}\n${
+        new Separator().separator
+      }\n${page}${choiceDescription}${ansiEscapes.cursorHide}\n${keyActions}\n`;
     }
   )(options);
 
