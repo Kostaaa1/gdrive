@@ -1,3 +1,20 @@
+type ViewFunction<Value, KeyValue, Config> = (
+  config: Prettify<Config>,
+  done: (value: Value | KeyValue) => void
+) => string | [string, string | undefined];
+
+export type Prompt<Value, KeyValue, Config> = (
+  config: Config,
+  context?: Context
+) => CancelablePromise<Value | KeyValue>;
+
+declare module "@inquirer/core" {
+  export function createPrompt<Value, KeyValue, Config>(
+    view: ViewFunction<Value, KeyValue, Config>
+  ): Prompt<Value, KeyValue, Config>;
+}
+
+import type { CancelablePromise, Context, PartialDeep, Prettify } from "@inquirer/type";
 import {
   createPrompt,
   useState,
@@ -14,28 +31,22 @@ import {
   makeTheme,
   type Theme,
 } from "@inquirer/core";
-import type { PartialDeep } from "@inquirer/type";
+
 import chalk from "chalk";
 import figures from "figures";
 import ansiEscapes from "ansi-escapes";
-import { ClientQuestions } from "../service/clientQuestions.js";
 
 const selectTheme: SelectTheme = {
   icon: { cursor: figures.pointer },
   style: { disabled: (text: string) => chalk.dim(`- ${text}`) },
 };
 
-type Item<Value> = Separator | Choice<Value>;
-
-function isSelectable<Value>(item: Item<Value>): item is Choice<Value> {
-  return !Separator.isSeparator(item) && !item.disabled;
-}
-
 type SelectTheme = {
   icon: { cursor: string };
   style: { disabled: (text: string) => string };
 };
 
+type Item<Value> = Separator | Choice<Value>;
 type Choice<Value> = {
   value: Value;
   name?: string;
@@ -44,19 +55,13 @@ type Choice<Value> = {
   type?: never;
 };
 
-type KeyChoice<Value> = {
-  value: Value;
-  key: string;
-  name?: string;
-  description?: string;
-  disabled?: boolean | string;
-  type?: never;
-};
+type KeyChoice<KeyValue> = Choice<KeyValue> & { key: string };
 
-type SelectConfig<Value> = {
+type SelectConfig<Value, KeyValue> = {
   message: string;
   choices: ReadonlyArray<Choice<Value> | Separator>;
-  actions?: ReadonlyArray<KeyChoice<Value> | Separator>;
+  actions?: ReadonlyArray<KeyChoice<KeyValue> | Separator>;
+  actionMsg?: string;
   pageSize?: number;
   loop?: boolean;
   default?: unknown;
@@ -64,15 +69,27 @@ type SelectConfig<Value> = {
   prefix?: string;
 };
 
-export default async <Value>(options: SelectConfig<Value>) => {
-  const answer = await createPrompt<Value, SelectConfig<Value>>(
-    (config: SelectConfig<Value>, done: (value: Value) => void): string => {
-      const { isSeparator } = Separator;
-      const { choices: items, loop = true, pageSize = 10, actions, prefix: initPrefix } = config;
+function isSelectable<Value>(item: Item<Value>): item is Choice<Value> {
+  return !Separator.isSeparator(item) && !item.disabled;
+}
+
+export default async <Value, KeyValue>(options: SelectConfig<Value, KeyValue>) => {
+  const answer = await createPrompt<Value, KeyValue, SelectConfig<Value, KeyValue>>(
+    (config: SelectConfig<Value, KeyValue>, done: (value: Value | KeyValue) => void): string => {
+      const {
+        choices: items,
+        loop = true,
+        pageSize = 10,
+        actions,
+        prefix: initPrefix,
+        actionMsg,
+      } = config;
+
       const firstRender = useRef(true);
       const theme = makeTheme<SelectTheme>(selectTheme, config.theme);
-      const prefix = initPrefix || usePrefix({ theme });
+      const prefix = (initPrefix || "") + usePrefix({ theme }) + " ";
       const [status, setStatus] = useState("pending");
+      const { isSeparator } = Separator;
 
       const bounds = useMemo(() => {
         const first = items.findIndex(isSelectable);
@@ -86,23 +103,32 @@ export default async <Value>(options: SelectConfig<Value>) => {
         if (!("default" in config)) return -1;
         return items.findIndex((item) => isSelectable(item) && item.value === config.default);
       }, [config.default, items]);
+
       const [active, setActive] = useState(
         defaultItemIndex === -1 ? bounds.first : defaultItemIndex
       );
-
       const selectedChoice = items[active] as Choice<Value>;
 
       useKeypress(async (key, _rl) => {
         if (isEnterKey(key)) {
           setStatus("done");
           done(selectedChoice.value);
-        } else if (isUpKey(key) || isDownKey(key)) {
+        } else if (
+          isUpKey(key) ||
+          isDownKey(key) ||
+          key.name === "tab" ||
+          // @ts-ignore
+          (key.name === "tab" && key.shift)
+        ) {
+          // @ts-ignore
+          const shouldGoUp = isUpKey(key) || (key.name === "tab" && key.shift);
+          const shouldGoDown = isDownKey(key) || key.name === "tab";
           if (
             loop ||
-            (isUpKey(key) && active !== bounds.first) ||
-            (isDownKey(key) && active !== bounds.last)
+            (shouldGoUp && active !== bounds.first) ||
+            (shouldGoDown && active !== bounds.last)
           ) {
-            const offset = isUpKey(key) ? -1 : 1;
+            const offset = shouldGoUp ? -1 : 1;
             let next = active;
             do {
               next = (next + offset + items.length) % items.length;
@@ -116,11 +142,12 @@ export default async <Value>(options: SelectConfig<Value>) => {
             setActive(position);
           }
         } else if (key.name === "escape") {
-          setStatus("done");
           done(null as Value);
+          // setStatus("done");
         } else {
           const keyChoice = actions?.find((x) => !isSeparator(x) && x.key === key.name);
           if (keyChoice && !isSeparator(keyChoice)) {
+            keyChoice;
             setStatus("done");
             done(keyChoice.value);
           }
@@ -128,28 +155,25 @@ export default async <Value>(options: SelectConfig<Value>) => {
       });
 
       const message = theme.style.message(config.message);
-
       let helpTip;
       if (firstRender.current && items.length <= pageSize) {
         firstRender.current = false;
         helpTip = theme.style.help("(Use arrow keys)");
       }
 
-      const page = usePagination<Item<Value>>({
+      let page = usePagination<Item<Value>>({
         items,
         active,
         renderItem({ item, isActive }: { item: Item<Value>; isActive: boolean }) {
           if (isSeparator(item)) {
-            return ` ${item.separator}`;
+            return `${item.separator}`;
           }
-
           const line = item.name || item.value;
           if (item.disabled) {
             const disabledLabel =
               typeof item.disabled === "string" ? item.disabled : "(disabled)";
             return theme.style.disabled(`${line} ${disabledLabel}`);
           }
-
           const color = isActive ? theme.style.highlight : (x: string) => x;
           const cursor = isActive ? theme.icon.cursor : ` `;
           return color(`${cursor} ${line}`);
@@ -164,21 +188,32 @@ export default async <Value>(options: SelectConfig<Value>) => {
         return `${prefix} ${message} ${theme.style.answer(answer)}`;
       }
 
-      const renderAction = (choice: KeyChoice<Value>) =>
-        chalk.greenBright(`${choice.name} [${choice.key}]`);
+      page = page.split("(Use arrow keys to reveal more choices)")[0];
 
       const keyActions =
         actions && actions?.length > 0
-          ? actions?.map((x) => (!isSeparator(x) ? renderAction(x) : x.separator)).join("\n")
+          ? actions
+              ?.map((action) =>
+                !isSeparator(action)
+                  ? `${action.name} ${chalk.cyanBright("[" + action.key + "]")}`
+                  : action.separator
+              )
+              .join("\n")
           : "";
+
+      const keyActionOutput = [actionMsg, keyActions].filter(Boolean).join("\n\n");
 
       const choiceDescription = selectedChoice.description
         ? `\n${selectedChoice.description}`
         : ``;
 
-      return `${[prefix, message, helpTip].filter(Boolean).join(" ")}\n${
-        new Separator().separator
-      }\n${page}${choiceDescription}${ansiEscapes.cursorHide}\n${keyActions}\n`;
+      const coloredSeparator = new Separator().separator;
+
+      return `${[prefix, message, helpTip]
+        .filter(Boolean)
+        .join("")}\n${coloredSeparator}\n${page}${choiceDescription}${
+        ansiEscapes.cursorHide
+      }\n${coloredSeparator}\n${keyActionOutput}`;
     }
   )(options);
 

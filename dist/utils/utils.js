@@ -6,7 +6,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import open from "open";
 import path from "path";
-import { readdir } from "fs/promises";
+import { readdir, mkdir } from "fs/promises";
 export function formatDate(date) {
     const formattedDate = new Date(date).toLocaleString("en-US", {
         year: "numeric",
@@ -52,6 +52,10 @@ export function parseFileExtension(name, mimeType) {
     const hasFileExtension = /\.(mp4|jpg|jpeg|png|gif|pdf|docx)$/i.test(name);
     return !hasFileExtension ? `${name}.${fileExt}` : name;
 }
+export async function createFolder(folderPath, folderName) {
+    const newPath = path.join(folderPath, folderName);
+    await mkdir(newPath);
+}
 export function getMimeType(filePath) {
     try {
         const lastSlashIndex = filePath.lastIndexOf("/");
@@ -80,7 +84,6 @@ export async function getUrlMimeType(url) {
     try {
         const res = await axios.head(url);
         const contentType = res.headers["content-type"];
-        console.log("MIME Type:", contentType);
         return contentType;
     }
     catch (error) {
@@ -117,14 +120,23 @@ async function findValidFile(dir, base) {
     const files = await readdir(dir);
     return files.find((x) => x.split(".")[0] === base);
 }
+export const isExtensionValid = (p) => {
+    // const extensionRegex = /\.(mp4|jpg|jpeg|png|gif|pdf|wav|mp3|docx)$/i;
+    const extensionRegex = /\.(mp4|jpg|jpeg|png|gif|pdf|wav|mp3|docx)/i;
+    return extensionRegex.test(p);
+};
+// export const isExtensionValid2 = (p: string) => {
+//   const ext = ["mp4", "jpg", "jpeg", "png", "gif", "pdf", "wav", "mp3", "docx"];
+//   const base = path.extname(p);
+//   return ext.includes(base);
+// };
 export async function openFile(filePath) {
-    console.log("init path: ", filePath);
     const dir = path.dirname(filePath);
     let base = path.basename(filePath);
-    const extensionRegex = /\.(mp4|jpg|jpeg|png|gif|pdf|docx)$/i;
-    const hasFileExtension = extensionRegex.test(base);
-    if (!hasFileExtension) {
+    const isValid = isExtensionValid(base);
+    if (!isValid) {
         const validBase = await findValidFile(dir, base);
+        console.log("BASE: ", validBase);
         if (validBase) {
             base = validBase;
         }
@@ -144,6 +156,7 @@ export async function openFile(filePath) {
             break;
         case "linux":
             try {
+                console.log(newPath);
                 await promisify(exec)(`xdg-open ${newPath}`);
             }
             catch (error) {

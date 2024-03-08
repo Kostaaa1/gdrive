@@ -7,8 +7,9 @@ export type MainActions =
   | "TRASH"
   | "EXIT";
 
-export type FolderActions = "RENAME" | "LIST" | "CREATE" | "DELETE" | "UPLOAD";
-export type FileActions = "DOWNLOAD" | "RENAME" | "INFO" | "DELETE" | "MOVE";
+export type FolderActions = "RENAME" | "CREATE" | "DELETE" | "UPLOAD";
+// export type FolderActions = "RENAME" | "LIST" | "CREATE" | "DELETE" | "UPLOAD";
+export type FileActions = "DOWNLOAD" | "RENAME" | "INFO" | "DELETE" | "MOVE" | "OPEN";
 export type UploadFileActions = "LOCAL" | "URL";
 export type NewFolderActions = "CREATE" | "UPLOAD";
 

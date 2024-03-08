@@ -11,12 +11,12 @@ function isSelectable(item) {
 }
 export default async (options) => {
     const answer = await createPrompt((config, done) => {
-        const { isSeparator } = Separator;
-        const { choices: items, loop = true, pageSize = 10, actions, prefix: initPrefix } = config;
+        const { choices: items, loop = true, pageSize = 10, actions, prefix: initPrefix, actionMsg, } = config;
         const firstRender = useRef(true);
         const theme = makeTheme(selectTheme, config.theme);
-        const prefix = initPrefix || usePrefix({ theme });
+        const prefix = (initPrefix || "") + usePrefix({ theme }) + " ";
         const [status, setStatus] = useState("pending");
+        const { isSeparator } = Separator;
         const bounds = useMemo(() => {
             const first = items.findIndex(isSelectable);
             const last = items.length - 1 - [...items].reverse().findIndex(isSelectable);
@@ -56,12 +56,13 @@ export default async (options) => {
                 }
             }
             else if (key.name === "escape") {
-                setStatus("done");
                 done(null);
+                // setStatus("done");
             }
             else {
                 const keyChoice = actions?.find((x) => !isSeparator(x) && x.key === key.name);
                 if (keyChoice && !isSeparator(keyChoice)) {
+                    keyChoice;
                     setStatus("done");
                     done(keyChoice.value);
                 }
@@ -73,12 +74,12 @@ export default async (options) => {
             firstRender.current = false;
             helpTip = theme.style.help("(Use arrow keys)");
         }
-        const page = usePagination({
+        let page = usePagination({
             items,
             active,
             renderItem({ item, isActive }) {
                 if (isSeparator(item)) {
-                    return ` ${item.separator}`;
+                    return `${item.separator}`;
                 }
                 const line = item.name || item.value;
                 if (item.disabled) {
@@ -97,14 +98,22 @@ export default async (options) => {
             const answer = selectedChoice.name || String(selectedChoice.value);
             return `${prefix} ${message} ${theme.style.answer(answer)}`;
         }
-        const renderAction = (choice) => chalk.greenBright(`${choice.name} [${choice.key}]`);
+        page = page.split("(Use arrow keys to reveal more choices)")[0];
         const keyActions = actions && actions?.length > 0
-            ? actions?.map((x) => (!isSeparator(x) ? renderAction(x) : x.separator)).join("\n")
+            ? actions
+                ?.map((action) => !isSeparator(action)
+                ? `${action.name} ${chalk.cyanBright("[" + action.key + "]")}`
+                : action.separator)
+                .join("\n")
             : "";
+        const keyActionOutput = [actionMsg, keyActions].filter(Boolean).join("\n\n");
         const choiceDescription = selectedChoice.description
             ? `\n${selectedChoice.description}`
             : ``;
-        return `${[prefix, message, helpTip].filter(Boolean).join(" ")}\n${new Separator().separator}\n${page}${choiceDescription}${ansiEscapes.cursorHide}\n${keyActions}\n`;
+        const coloredSeparator = new Separator().separator;
+        return `${[prefix, message, helpTip]
+            .filter(Boolean)
+            .join("")}\n${coloredSeparator}\n${page}${choiceDescription}${ansiEscapes.cursorHide}\n${coloredSeparator}\n${keyActionOutput}`;
     })(options);
     return answer;
 };

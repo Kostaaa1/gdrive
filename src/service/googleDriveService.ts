@@ -62,6 +62,26 @@ export class GoogleDriveService {
     }
   }
 
+  public async getRootItems(): Promise<{ name: string; value: string; mimeType: string }[]> {
+    const res = await this.drive_client.files.list({
+      q: "((mimeType='application/vnd.google-apps.folder' and 'root' in parents) or ('root' in parents and mimeType!='application/vnd.google-apps.folder')) and trashed=false",
+      fields: "files(id, name, mimeType)",
+    });
+
+    const folders = res.data.files;
+    if (folders && folders?.length > 0) {
+      return folders.map(
+        (x) => x.name && { name: x.name, value: x.name, mimeType: x.mimeType }
+      ) as {
+        name: string;
+        value: string;
+        mimeType: string;
+      }[];
+    } else {
+      return [];
+    }
+  }
+
   public async getRootFolders(): Promise<{ name: string; value: string }[]> {
     const res = await this.drive_client.files.list({
       q: "mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false",
@@ -191,7 +211,6 @@ export class GoogleDriveService {
         removeParents: previousParents,
         fields: "id, parents",
       });
-      // return files.status;
     } catch (error) {
       console.log(error);
     }
@@ -247,26 +266,47 @@ export class GoogleDriveService {
     }
   }
 
-  public async uploadSingleFile(
-    file_name: string,
-    stream: any,
-    folderId: string | null,
-    mimeType: string
-  ): Promise<void> {
-    const name = mimeType ? parseFileExtension(file_name, mimeType) : file_name;
-    // const exists = await this.fileExists(folderId, file_name); // Avoid duplicats ?
-    await this.drive_client.files.create({
-      requestBody: {
-        name,
-        mimeType,
-        parents: folderId ? [folderId] : null,
-      },
-      media: {
-        body: stream,
-        mimeType,
-      },
-    });
+  public async uploadSingleFile(name: string, stream: any, mimeType: string, folderId?: string) {
+    try {
+      // const name = mimeType ? parseFileExtension(file_name, mimeType) : file_name;
+      // const exists = await this.fileExists(folderId, file_name); // Avoid duplicats ?
+
+      await this.drive_client.files.create({
+        requestBody: {
+          name,
+          mimeType,
+          parents: folderId ? [folderId] : null,
+        },
+        media: {
+          body: stream,
+          mimeType,
+        },
+      });
+    } catch (error) {
+      console.error(error);
+    }
   }
+
+  // public async uploadSingleFile(
+  //   file_name: string,
+  //   stream: any,
+  //   folderId: string | null,
+  //   mimeType: string
+  // ): Promise<void> {
+  //   const name = mimeType ? parseFileExtension(file_name, mimeType) : file_name;
+  //   // const exists = await this.fileExists(folderId, file_name); // Avoid duplicats ?
+  //   await this.drive_client.files.create({
+  //     requestBody: {
+  //       name,
+  //       mimeType,
+  //       parents: folderId ? [folderId] : null,
+  //     },
+  //     media: {
+  //       body: stream,
+  //       mimeType,
+  //     },
+  //   });
+  // }
 
   public async printFileInfo(id: string) {
     const res = await this.drive_client.files.get({
@@ -285,7 +325,7 @@ export class GoogleDriveService {
       `${name}\n`,
       "Size:",
       `${convertedSize}\n`,
-      "Type:",
+      "MimeType:",
       `${mimeType}\n`,
       "Created time:",
       `${formatDate(createdTime!)}\n`
@@ -305,7 +345,6 @@ export class GoogleDriveService {
   }
 
   public async listTrashFiles(): Promise<drive_v3.Schema$File[]> {
-    console.log("called listTrashed FILES");
     const res = await this.drive_client.files.list({
       q: "trashed=true",
       fields: "files(id, name, mimeType)",

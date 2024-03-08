@@ -1,81 +1,127 @@
-import { createPrompt, useState, useKeypress, usePrefix, isEnterKey, isUpKey, isDownKey, } from "@inquirer/core";
+import { createPrompt, useState, useKeypress, usePrefix, usePagination, useRef, useMemo, isEnterKey, isUpKey, isDownKey, isNumberKey, Separator, makeTheme, } from "@inquirer/core";
 import chalk from "chalk";
-import readline from "readline";
-// @ts-ignore
+import figures from "figures";
+import ansiEscapes from "ansi-escapes";
+const selectTheme = {
+    icon: { cursor: figures.pointer },
+    style: { disabled: (text) => chalk.dim(`- ${text}`) },
+};
+function isSelectable(item) {
+    return !Separator.isSeparator(item) && !item.disabled;
+}
 export default async (options) => {
-    console.log("OPTIONSSSSSS: ", options);
-    const { 
-    // @ts-ignore
-    renderSelected = (choice) => chalk.green(`❯ ${choice.name} (${choice.key})`), 
-    // @ts-ignore
-    renderUnselected = (choice) => `  ${choice.name} (${choice.key})`, hideCursor = true, } = options;
-    let rl;
-    if (hideCursor) {
-        rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout,
-        });
-        rl.write("\x1B[?25l"); // Hide cursor
-    }
     const answer = await createPrompt((config, done) => {
-        // @ts-ignore
-        const { choices, default: defaultKey } = config;
+        const { choices: items, loop = true, pageSize = 10, actions, prefix: initPrefix, actionMsg, } = config;
+        const firstRender = useRef(true);
+        const theme = makeTheme(selectTheme, config.theme);
+        const prefix = (initPrefix || "") + usePrefix({ theme }) + " ";
         const [status, setStatus] = useState("pending");
-        const [index, setIndex] = useState(
-        // @ts-ignore
-        choices.findIndex((choice) => choice.value === defaultKey ?? ""));
-        const prefix = usePrefix({});
-        useKeypress((key, _rl) => {
+        const { isSeparator } = Separator;
+        const bounds = useMemo(() => {
+            const first = items.findIndex(isSelectable);
+            const last = items.length - 1 - [...items].reverse().findIndex(isSelectable);
+            if (first < 0)
+                throw new Error("[select prompt] No selectable choices. All choices are disabled.");
+            return { first, last };
+        }, [items]);
+        const defaultItemIndex = useMemo(() => {
+            if (!("default" in config))
+                return -1;
+            return items.findIndex((item) => isSelectable(item) && item.value === config.default);
+        }, [config.default, items]);
+        const [active, setActive] = useState(defaultItemIndex === -1 ? bounds.first : defaultItemIndex);
+        const selectedChoice = items[active];
+        useKeypress(async (key, _rl) => {
             if (isEnterKey(key)) {
-                const selectedChoice = choices[index];
-                if (selectedChoice) {
-                    setStatus("done");
-                    done(selectedChoice.value);
+                setStatus("done");
+                done(selectedChoice.value);
+            }
+            else if (isUpKey(key) ||
+                isDownKey(key) ||
+                key.name === "tab" ||
+                // @ts-ignore
+                (key.name === "tab" && key.shift)) {
+                // @ts-ignore
+                const shouldGoUp = isUpKey(key) || (key.name === "tab" && key.shift);
+                const shouldGoDown = isDownKey(key) || key.name === "tab";
+                if (loop ||
+                    (shouldGoUp && active !== bounds.first) ||
+                    (shouldGoDown && active !== bounds.last)) {
+                    const offset = shouldGoUp ? -1 : 1;
+                    let next = active;
+                    do {
+                        next = (next + offset + items.length) % items.length;
+                    } while (!isSelectable(items[next]));
+                    setActive(next);
                 }
             }
-            else if (isUpKey(key)) {
-                setIndex(index > 0 ? index - 1 : 0);
+            else if (isNumberKey(key)) {
+                const position = Number(key.name) - 1;
+                const item = items[position];
+                if (item != null && isSelectable(item)) {
+                    setActive(position);
+                }
             }
-            else if (isDownKey(key)) {
-                setIndex(index < choices.length - 1 ? index + 1 : choices.length - 1);
+            else if (key.name === "escape") {
+                done(null);
+                // setStatus("done");
             }
             else {
-                // @ts-ignore
-                const foundIndex = choices.findIndex((choice) => {
-                    const choiceValue = choice.value.toLowerCase();
-                    const keyName = key.name.toLowerCase();
-                    return choiceValue.startsWith(keyName);
-                });
-                if (foundIndex !== -1) {
-                    setIndex(foundIndex);
-                    // This automatically finishes the prompt. Remove this if you don't want that.
+                const keyChoice = actions?.find((x) => !isSeparator(x) && x.key === key.name);
+                if (keyChoice && !isSeparator(keyChoice)) {
+                    keyChoice;
                     setStatus("done");
-                    done(choices[foundIndex].value);
+                    done(keyChoice.value);
                 }
             }
         });
-        // @ts-ignore
-        const message = chalk.bold(config.message);
-        if (status === "done") {
-            return `${prefix} ${message} ${chalk.cyan(choices[index].name)}`;
+        const message = theme.style.message(config.message);
+        let helpTip;
+        if (firstRender.current && items.length <= pageSize) {
+            firstRender.current = false;
+            helpTip = theme.style.help("(Use arrow keys)");
         }
-        const renderedChoices = choices
-            // @ts-ignore
-            .map((choice, i) => {
-            if (i === index) {
-                return renderSelected(choice, index);
-            }
-            return renderUnselected(choice, i);
-        })
-            .join("\n");
-        return [`${prefix} ${message}`, renderedChoices];
+        let page = usePagination({
+            items,
+            active,
+            renderItem({ item, isActive }) {
+                if (isSeparator(item)) {
+                    return `${item.separator}`;
+                }
+                const line = item.name || item.value;
+                if (item.disabled) {
+                    const disabledLabel = typeof item.disabled === "string" ? item.disabled : "(disabled)";
+                    return theme.style.disabled(`${line} ${disabledLabel}`);
+                }
+                const color = isActive ? theme.style.highlight : (x) => x;
+                const cursor = isActive ? theme.icon.cursor : ` `;
+                return color(`${cursor} ${line}`);
+            },
+            pageSize,
+            loop,
+            theme,
+        });
+        if (status === "done") {
+            const answer = selectedChoice.name || String(selectedChoice.value);
+            return `${prefix} ${message} ${theme.style.answer(answer)}`;
+        }
+        page = page.split("(Use arrow keys to reveal more choices)")[0];
+        const keyActions = actions && actions?.length > 0
+            ? actions
+                ?.map((action) => !isSeparator(action)
+                ? `${action.name} ${chalk.cyanBright("[" + action.key + "]")}`
+                : action.separator)
+                .join("\n")
+            : "";
+        const keyActionOutput = [actionMsg, keyActions].filter(Boolean).join("\n\n");
+        const choiceDescription = selectedChoice.description
+            ? `\n${selectedChoice.description}`
+            : ``;
+        const coloredSeparator = new Separator().separator;
+        return `${[prefix, message, helpTip]
+            .filter(Boolean)
+            .join("")}\n${coloredSeparator}\n${page}${choiceDescription}${ansiEscapes.cursorHide}\n${coloredSeparator}\n${keyActionOutput}`;
     })(options);
-    if (hideCursor) {
-        // @ts-ignore
-        rl.write("\x1B[?25h"); // Show cursor
-        // @ts-ignore
-        rl.close();
-    }
     return answer;
 };
 //# sourceMappingURL=interactivePrompt.mjs.map
