@@ -2,13 +2,7 @@ import "dotenv/config";
 import { GoogleDriveService } from "./service/googleDriveService.js";
 import open from "open";
 import { ClientQuestions } from "./service/clientQuestions.js";
-import {
-  checkIfFolder,
-  convertPathToStream,
-  convertUrlToStream,
-  getMimeType,
-  openFile,
-} from "./utils/utils.js";
+import { checkIfFolder, convertPathToStream, getMimeType, openFile } from "./utils/utils.js";
 import internal from "stream";
 import chalk from "chalk";
 import { drive_v3 } from "googleapis";
@@ -16,20 +10,19 @@ import fs from "fs";
 import path from "path";
 import inquirer from "inquirer";
 import { Separator } from "@inquirer/core";
-import { mkdir, readdir } from "fs/promises";
+import { mkdir } from "fs/promises";
 import { SingleBar } from "cli-progress";
-import { spawn } from "child_process";
-import input_path from "./custom/pathPrompt.mjs";
+import { getPathItems } from "./custom/pathPrompt.mjs";
 
 const googleDrive = new GoogleDriveService();
 const {
   folder_questions,
   folder_questions_1,
   new_folder_questions,
-  inputPath,
   file_questions_1,
   rename,
   upload_questions,
+  input_path,
   delete_questions,
   confirm,
   main_questions,
@@ -49,8 +42,8 @@ const processNewFolder = async () => {
       await processMainActions();
       break;
     case "UPLOAD":
-      const path = await input("Provide folder path: ");
-      await processSingleUploadFolder(path);
+      const fpath = await input_path("Provide folder path: ");
+      await processSingleUploadFolder(fpath);
       break;
   }
 };
@@ -125,7 +118,7 @@ const processSelectedFile = async (
         await backFunc(file);
         break;
       case "DOWNLOAD":
-        let path = await input("Provide a destination where to store file: ");
+        let path = await input_path("Provide a destination where to store file: ");
         const hasFileExtension = /\.(mp4|jpg|jpeg|png|gif|pdf|docx)$/i;
 
         if (!fs.existsSync(path)) {
@@ -191,7 +184,7 @@ const processUploadActions = async (folderId: string, folderName: string) => {
         let stream: internal.Readable | undefined;
         let mimeType: string | undefined;
 
-        const filePath = await input("Provide the location of the file on your machine: ");
+        const filePath = await input_path("Provide the location of the file on your machine: ");
         const fileName = path.basename(filePath);
         const type = getMimeType(filePath);
 
@@ -210,7 +203,7 @@ const processUploadActions = async (folderId: string, folderName: string) => {
         await processFolderActions(folderName);
         break;
       case "FOLDER":
-        const folderPath = await input("Provide folder path: ");
+        const folderPath = await input_path("Provide folder path: ");
         await processSingleUploadFolder(folderPath);
         break;
     }
@@ -233,7 +226,7 @@ const processDownloadFolder = async (
     );
   }
 
-  const folderPath = await input("Provide a destination where to store folder: ");
+  const folderPath = await input_path("Provide a path where to store the folder: ");
   const progressBar = new SingleBar({
     format: "Progress [{bar}] {percentage}% | ETA: {eta}s | {value}/{total}",
   });
@@ -382,8 +375,7 @@ const processMainActions = async () => {
         if (res === "FOLDER") {
           await processNewFolder();
         } else if ("FILE") {
-          // const filePath = await input("Enter the path for the file you want to open: ");
-          const filePath = await inputPath();
+          const filePath = await input_path("Enter the path for the file you want to open: ");
           if (fs.existsSync(filePath)) {
             const stream = await convertPathToStream(filePath);
             const mimeType = getMimeType(filePath);
@@ -396,7 +388,7 @@ const processMainActions = async () => {
         await processMainActions();
         break;
       case "OPEN":
-        const filePath = await input("Enter the path for the file you want to open: ");
+        const filePath = await input_path("Enter the path for the file you want to open: ");
         await openFile(filePath);
         await processMainActions();
         break;
@@ -428,55 +420,8 @@ const processMainActions = async () => {
 (async () => {
   // await googleDrive.authorize();
   // await processMainActions();
-  const s = await input_path({
-    message: "📁Enter a path: ",
-    default: process.cwd(),
-  });
+  const s = await input_path("Path: ");
   console.log(s);
+  // const a = await getPathItems("/mnt/c/Users/kosta/OneDrive/Desktop/keystrokes/ATT86239.env/");
+  // console.log(a);
 })();
-
-// const scrapeVideos = async () => {
-//   const url = await input("Enter the url to scrape videos from: ");
-//   const script = spawn("python3", ["scraper.py", "iframe", url]);
-//   script.stdout.on("data", (data) => {
-//     console.log("Recieved data: ", data.toString());
-//     const s = spawn("python3", ["scraper.py", "iframe", `https:${data.toString()}`]);
-//     s.stdout.on("data", async (data) => {
-//       console.log("Video url", data.toString());
-//       const url = JSON.parse(data.toString())[2];
-//       const stream = await convertUrlToStream(url);
-//       const folderId = await googleDrive.getFolderIdWithName("Ablum_1");
-//       await googleDrive.uploadSingleFile(url, stream, folderId, "video/mp4");
-//     });
-//     s.stderr.on("data", (data) => {
-//       console.error("Stdout error: ", data.toString());
-//     });
-//   });
-//   script.stderr.on("data", (data) => {
-//     console.error("Stdout error: ", data.toString("utf-8"));
-//   });
-// };
-
-// const processFileActions = async (folder: { name: string; id: string }) => {
-//   try {
-//     const { id: folderId, name: folderName } = folder;
-//     const files = await googleDrive.listFolderFiles(folderId);
-
-//     if (files.length === 0) {
-//       console.log("This folder is empty!");
-//       processFolderActions(folderName);
-//       return;
-//     }
-
-//     const file = await select_file(files);
-
-//     const { name, mimeType } = file;
-//     if (mimeType === "application/vnd.google-apps.folder") {
-//       await processFolderActions(name!);
-//     } else {
-//       await processSelectedFile(file, folder);
-//     }
-//   } catch (error) {
-//     processFolderActions(folder.name);
-//   }
-// };

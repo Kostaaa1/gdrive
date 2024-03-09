@@ -27,6 +27,7 @@
     "file-type": "^19.0.0",
     "googleapis": "^131.0.0",
     "inquirer-interrupted-prompt": "^3.0.0",
+    "inquirer-path": "^1.0.0-beta5",
     "mime": "^4.0.1",
     "nanospinner": "^1.1.0",
     "open": "^10.0.3",

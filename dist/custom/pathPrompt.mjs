@@ -2,9 +2,19 @@ import { createPrompt, useState, useKeypress, usePrefix, isEnterKey, makeTheme, 
 import fs from "fs/promises";
 import path from "path";
 import ansiEscapes from "ansi-escapes";
+import { statSync, writeFileSync } from "fs";
+const isDirectory = (item) => {
+    try {
+        const v = !item.startsWith(path.sep) ? `${path.sep}${item}` : item;
+        const stats = statSync(v);
+        return stats.isDirectory();
+    }
+    catch (error) {
+        return false;
+    }
+};
 export const getPathItems = async (p) => {
     try {
-        await fs.writeFile("/mnt/c/Users/kosta/OneDrive/Desktop/imgs/transformed/skrtt.txt", JSON.stringify({ p }, null, 2));
         const exists = await fs
             .access(p)
             .then(() => true)
@@ -50,17 +60,11 @@ export default createPrompt((config, done) => {
                     setStatus("done");
                     done(answer);
                 }
-                else {
-                    // rl.write(value);
-                    // setValue(value);
-                    // setError(isValid || "You must provide a valid value");
-                    // setStatus("pending");
-                }
             }
             else {
                 setPaths([]);
-                rl.write(value);
                 setValue(value);
+                rl.write(value);
             }
         }
         else if (key.name === "tab") {
@@ -72,14 +76,17 @@ export default createPrompt((config, done) => {
             else {
                 const p = paths.length === 0 ? await getPathItems(value) : paths;
                 if (p.length === 0) {
-                    rl.write(value);
+                    writeFileSync("/mnt/c/Users/kosta/OneDrive/Desktop/imgs/transformed/bug.txt", JSON.stringify({ line: rl.line, paths, value, empty: "EMPTY AS FUCKKKKKKKK" }, null, 2));
+                    setPaths([]);
+                    setValue(rl.line);
+                    // rl.write(value);
                     return;
                 }
                 const base = paths.length === 0 && value.endsWith(path.sep) ? value : path.dirname(value);
                 setPaths(p);
                 const newPaths = p.map((x) => x + path.sep);
                 let next;
-                // @ts-ignore
+                // @ts-ignore // key.shift
                 if (paths.length > 0 && key.shift) {
                     next = active > 0 ? active - 1 : paths.length - 1;
                 }
@@ -88,8 +95,8 @@ export default createPrompt((config, done) => {
                 }
                 setActive(next);
                 const newPath = path.join(base, newPaths[next]);
-                rl.write(newPath);
                 setValue(newPath);
+                rl.write(newPath);
             }
         }
         else {
@@ -106,7 +113,7 @@ export default createPrompt((config, done) => {
             items: paths,
             active,
             renderItem: (data) => {
-                const { index, isActive, item } = data;
+                const { isActive, item } = data;
                 const color = isActive ? theme.style.highlight : (x) => x;
                 return color(item);
             },

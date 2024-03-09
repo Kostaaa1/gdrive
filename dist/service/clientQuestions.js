@@ -1,26 +1,18 @@
-import fs from "fs";
 import chalk from "chalk";
 import inquirer from "inquirer";
 import interactivePrompt from "../custom/interactivePrompt.mjs";
 import { isExtensionValid } from "../utils/utils.js";
 import InterruptedPrompt from "inquirer-interrupted-prompt";
+import pathPrompt from "../custom/pathPrompt.mjs";
 InterruptedPrompt.fromAll(inquirer);
 export class ClientQuestions {
+    async input_path(message) {
+        const data = pathPrompt({ message, default: process.cwd() });
+        return data;
+    }
     async confirm(message) {
         const { bool } = await inquirer.prompt([{ message, type: "confirm", name: "bool" }]);
         return bool;
-    }
-    async inputPath() {
-        const { path } = await inquirer.prompt([
-            {
-                type: "path",
-                name: "path",
-                message: "Enter the file path: ",
-                default: process.cwd(),
-                validate: (answer) => (fs.existsSync(answer) ? true : "The path does not exist."),
-            },
-        ]);
-        return path;
     }
     async input(message) {
         const { answer } = await inquirer.prompt([
@@ -130,7 +122,7 @@ export class ClientQuestions {
                         value: file,
                     })),
                 ],
-                actionMsg: `Folder action ${chalk.underline.cyanBright(folder_name)}:`,
+                actionMsg: `Action for folder: ${chalk.underline.cyanBright(folder_name)}:`,
                 actions: keyActions,
             });
             return answer;
@@ -138,7 +130,7 @@ export class ClientQuestions {
         else {
             const { res } = await inquirer.prompt([
                 {
-                    message: `The folder ${chalk.blueBright(folder_name)} is empty. Choose folder action.`,
+                    message: `The folder ${chalk.blueBright(folder_name)} is empty. Choose action for folder.`,
                     prefix,
                     name: "res",
                     type: "list",
