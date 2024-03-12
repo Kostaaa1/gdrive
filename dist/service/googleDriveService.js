@@ -8,20 +8,21 @@ const { refresh_token } = JSON.parse(readFileSync("./token.json", "utf-8"));
 export class GoogleDriveService {
     constructor() {
         const { clientId, clientSecret, redirectUri, refreshToken } = GoogleDriveService;
-        this.oatuh2Client = this.createOAuthClient(clientId, clientSecret, redirectUri);
+        this.oauth2Client = this.createOAuthClient(clientId, clientSecret, redirectUri);
         this.drive_client = this.createDriveClient(refreshToken);
+        this.authorize();
     }
     createOAuthClient(clientId, clientSecret, redirectUri) {
         const client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
         return client;
     }
     createDriveClient(refresh_token) {
-        this.oatuh2Client.setCredentials({ refresh_token });
-        return google.drive({ version: "v3", auth: this.oatuh2Client });
+        this.oauth2Client.setCredentials({ refresh_token });
+        return google.drive({ version: "v3", auth: this.oauth2Client });
     }
     async isAccessGranted() {
         try {
-            const token = await this.oatuh2Client.getAccessToken();
+            const token = await this.oauth2Client.getAccessToken();
             return token.res?.status === 200;
         }
         catch (err) {
@@ -31,16 +32,22 @@ export class GoogleDriveService {
     async authorize() {
         const isGranted = await this.isAccessGranted();
         if (!isGranted) {
-            const authUrl = this.oatuh2Client.generateAuthUrl({
+            const authUrl = this.oauth2Client.generateAuthUrl({
                 access_type: "offline",
                 scope: ["https://www.googleapis.com/auth/drive"],
             });
             console.log("Visit this URL, and copy Authorization code: \n", authUrl);
             const code = readline.question("Paste authorization code here: ");
-            const { tokens } = await this.oatuh2Client.getToken(code);
+            const { tokens } = await this.oauth2Client.getToken(code);
             await writeFile("./token.json", JSON.stringify(tokens));
-            this.oatuh2Client.setCredentials(tokens);
+            this.oauth2Client.setCredentials(tokens);
         }
+    }
+    static getInstance() {
+        if (!GoogleDriveService.instance) {
+            GoogleDriveService.instance = new GoogleDriveService();
+        }
+        return GoogleDriveService.instance;
     }
     async getRootItems() {
         const res = await this.drive_client.files.list({
@@ -49,7 +56,7 @@ export class GoogleDriveService {
         });
         const folders = res.data.files;
         if (folders && folders?.length > 0) {
-            return folders.map((x) => x.name && { name: x.name, value: x.name, mimeType: x.mimeType });
+            return folders.map((x) => x.name && { name: x.name, value: x.name, mimeType: x.mimeType, id: x.id });
         }
         else {
             return [];
@@ -200,7 +207,7 @@ export class GoogleDriveService {
             throw new Error(`Error while renaming a folder: ${error}`);
         }
     }
-    async deleteFolder(folderId) {
+    async deleteItem(folderId) {
         try {
             await this.drive_client.files.delete({
                 fileId: folderId,
@@ -243,26 +250,6 @@ export class GoogleDriveService {
             console.error(error);
         }
     }
-    // public async uploadSingleFile(
-    //   file_name: string,
-    //   stream: any,
-    //   folderId: string | null,
-    //   mimeType: string
-    // ): Promise<void> {
-    //   const name = mimeType ? parseFileExtension(file_name, mimeType) : file_name;
-    //   // const exists = await this.fileExists(folderId, file_name); // Avoid duplicats ?
-    //   await this.drive_client.files.create({
-    //     requestBody: {
-    //       name,
-    //       mimeType,
-    //       parents: folderId ? [folderId] : null,
-    //     },
-    //     media: {
-    //       body: stream,
-    //       mimeType,
-    //     },
-    //   });
-    // }
     async printFileInfo(id) {
         const res = await this.drive_client.files.get({
             fileId: id,
@@ -291,9 +278,26 @@ export class GoogleDriveService {
         const files = res.data.files;
         return files && files.length > 0 ? files : [];
     }
+    async getDriveStorageSize() {
+        try {
+            const driveInfo = await this.drive_client.about.get({
+                fields: "storageQuota",
+            });
+            // @ts-ignore
+            const { limit, usage } = driveInfo.data.storageQuota;
+            const totalStorage = parseFloat(limit) / (1024 * 1024 * 1024);
+            const usedStorage = +(parseFloat(usage) / (1024 * 1024)).toFixed(2);
+            return { usedStorage, totalStorage };
+        }
+        catch (err) {
+            console.log(err);
+            return null;
+        }
+    }
 }
 GoogleDriveService.clientId = GOOGLE_CLIENT_ID;
 GoogleDriveService.clientSecret = GOOGLE_CLIENT_SECRET;
 GoogleDriveService.redirectUri = GOOGLE_REDIRECT_URL;
 GoogleDriveService.refreshToken = refresh_token;
+GoogleDriveService.instance = null;
 //# sourceMappingURL=googleDriveService.js.map

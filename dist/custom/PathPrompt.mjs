@@ -2,17 +2,6 @@ import { createPrompt, useState, useKeypress, usePrefix, isEnterKey, makeTheme, 
 import fs from "fs/promises";
 import path from "path";
 import ansiEscapes from "ansi-escapes";
-import { statSync } from "fs";
-const isDirectory = (item) => {
-    try {
-        const v = !item.startsWith(path.sep) ? `${path.sep}${item}` : item;
-        const stats = statSync(v);
-        return stats.isDirectory();
-    }
-    catch (error) {
-        return false;
-    }
-};
 export const getPathItems = async (p) => {
     try {
         const exists = await fs
@@ -143,4 +132,4 @@ export default createPrompt((config, done) => {
         error,
     ];
 });
-//# sourceMappingURL=pathPrompt.mjs.map
+//# sourceMappingURL=PathPrompt.mjs.map

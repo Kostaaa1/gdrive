@@ -1,28 +1,40 @@
 import {
   DeleteOpts,
-  Folder1,
   FileActions,
-  FolderActions,
   NewFolderActions,
   TrashActions,
   UploadOpts,
 } from "../types/types.js";
-import fs from "fs";
-import { Separator, makeTheme } from "@inquirer/core";
 import chalk from "chalk";
 import type { drive_v3 } from "googleapis";
 import inquirer from "inquirer";
-import interactivePrompt from "../custom/interactivePrompt.mjs";
 import { isExtensionValid } from "../utils/utils.js";
 import InterruptedPrompt from "inquirer-interrupted-prompt";
-import pathPrompt from "../custom/pathPrompt.mjs";
+// @ts-ignore
+import { PathPrompt } from "inquirer-path";
+import interactiveList from "../custom/InteractiveList.mjs";
+import { Separator } from "../custom/Separator.mjs";
+import stringWidth from "string-width";
 
+inquirer.registerPrompt("path", PathPrompt);
 InterruptedPrompt.fromAll(inquirer);
 
 export class ClientQuestions {
+  private static instance: ClientQuestions | null = null;
+
+  public static getInstance(): ClientQuestions {
+    if (!this.instance) {
+      this.instance = new ClientQuestions();
+    }
+    return this.instance;
+  }
+
   public async input_path(message: string): Promise<string> {
-    const data = pathPrompt({ message, default: process.cwd() });
-    return data;
+    console.clear();
+    const { path } = await inquirer.prompt([
+      { type: "path", name: "path", message, default: process.cwd() },
+    ]);
+    return path;
   }
 
   public async confirm(message: string): Promise<boolean> {
@@ -36,17 +48,16 @@ export class ClientQuestions {
         type: "input",
         name: "answer",
         message,
-        prefix: chalk.gray("Press <ESC> to return to previous page\n"),
       },
     ]);
     return answer.trim();
   }
 
   public async rename(previousName: string) {
+    console.clear();
     let { newName } = await inquirer.prompt({
       type: "input",
       name: "newName",
-      prefix: chalk.gray("Press <ESC> to return to previous page\n"),
       message: "Provide new name of the selected: ",
     });
 
@@ -58,10 +69,14 @@ export class ClientQuestions {
     return newName;
   }
 
-  public async main_questions(items: { name: string; value: string; mimeType: string }[]) {
+  public async main_questions(
+    items: { name: string; value: string; mimeType: string }[],
+    storageSize: { totalStorage: number; usedStorage: number } | null
+  ) {
     console.clear();
-    const answer = await interactivePrompt({
+    const answer = await interactiveList({
       message: "Your root folder/files: ",
+      sufix: `Used ${storageSize?.usedStorage}MB of ${storageSize?.totalStorage}GB`,
       choices: [
         ...items.map((file) => ({
           name: `${file.name} ${
@@ -71,15 +86,16 @@ export class ClientQuestions {
         })),
       ],
       actions: [
+        { name: "Manage Trash", value: "TRASH", key: "t" },
         {
-          name: "Manage Trash",
-          value: "TRASH",
-          key: "t",
+          name: "Upload root folder/file",
+          value: "UPLOAD",
+          key: "v",
         },
         {
-          name: "Create root folder/file",
+          name: "Create empty folder",
           value: "CREATE",
-          key: "v",
+          key: "z",
         },
         {
           name: "Open Google Drive in your browser",
@@ -87,9 +103,14 @@ export class ClientQuestions {
           key: "o",
         },
         {
-          name: "Open file from your local machine",
+          name: "Preview file from your local machine",
           value: "OPEN",
-          key: "x",
+          key: "p",
+        },
+        {
+          name: "Operate with multiple files",
+          value: "CHECKBOX",
+          key: "w",
         },
         {
           name: "Exit",
@@ -98,7 +119,6 @@ export class ClientQuestions {
         },
       ],
     });
-
     return answer;
   }
 
@@ -113,11 +133,11 @@ export class ClientQuestions {
     const { fileName } = await inquirer.prompt([
       {
         message,
-        prefix: chalk.gray("Press <ESC> to return to previous page\n"),
         name: "fileName",
         type: "list",
         pageSize: 10,
-        choices: [{ type: "separator" }, ...folders],
+        // choices: [{ type: "separator" }, ...folders],
+        choices: folders,
       },
     ]);
     return fileName;
@@ -125,7 +145,7 @@ export class ClientQuestions {
 
   public async folder_questions(
     files: drive_v3.Schema$File[],
-    folder_name: string
+    folderName: string
   ): Promise<string | drive_v3.Schema$File> {
     console.clear();
     const keyActions = [
@@ -144,13 +164,11 @@ export class ClientQuestions {
       { name: "Upload folder/file", value: "UPLOAD", key: "u" },
     ];
 
-    const prefix = chalk.gray("Press <ESC> to return to previous page\n");
     if (files.length > 0) {
-      const answer = await interactivePrompt({
+      const answer = await interactiveList({
         message: `Select file or choose the action (keys) for folder ${chalk.blueBright.underline(
-          folder_name
+          folderName
         )}: `,
-        prefix,
         pageSize: 10,
         choices: [
           ...files.map((file) => ({
@@ -160,7 +178,7 @@ export class ClientQuestions {
             value: file,
           })),
         ],
-        actionMsg: `Action for folder: ${chalk.underline.cyanBright(folder_name)}:`,
+        actionMsg: `Folder actions:`,
         actions: keyActions,
       });
       return answer;
@@ -168,9 +186,8 @@ export class ClientQuestions {
       const { res } = await inquirer.prompt([
         {
           message: `The folder ${chalk.blueBright(
-            folder_name
-          )} is empty. Choose action for folder.`,
-          prefix,
+            folderName
+          )} is empty. Choose action for folder:\n`,
           name: "res",
           type: "list",
           choices: keyActions,
@@ -185,7 +202,6 @@ export class ClientQuestions {
     const { answer } = await inquirer.prompt([
       {
         message: "Create / Upload folder: ",
-        prefix: chalk.gray("Press <ESC> to return to previous page\n"),
         name: "answer",
         type: "list",
         pageSize: 10,
@@ -206,12 +222,11 @@ export class ClientQuestions {
     const { answer } = await inquirer.prompt([
       {
         message: `Choose file operation for ${chalk.blueBright.underline(folder_content)}: `,
-        prefix: chalk.gray("Press <ESC> to return to previous page\n"),
         name: "answer",
         type: "list",
         pageSize: 10,
         choices: [
-          { type: "separator" },
+          // { type: "separator" },
           { name: "Rename", value: "RENAME" },
           {
             name: "Delete/Trash",
@@ -240,7 +255,6 @@ export class ClientQuestions {
         type: "list",
         pageSize: 10,
         message: "Do you want to permanently delete seleceted item or move it to trash",
-        prefix: chalk.gray("Press <ESC> to return to previous page\n"),
         name: "answer",
         choices: [
           {
@@ -254,30 +268,6 @@ export class ClientQuestions {
     return answer.trim() as DeleteOpts;
   }
 
-  public async upload_questions(): Promise<UploadOpts> {
-    console.clear();
-    const { answer } = await inquirer.prompt([
-      {
-        type: "list",
-        pageSize: 10,
-        message: "Upload: ",
-        prefix: chalk.gray("Press <ESC> to return to previous page\n"),
-        name: "answer",
-        choices: [
-          {
-            name: "📁 File",
-            value: "FILE",
-          },
-          {
-            name: "📂 Folder",
-            value: "FOLDER",
-          },
-        ],
-      },
-    ]);
-    return answer.trim() as UploadOpts;
-  }
-
   public async trash_file_question(): Promise<TrashActions> {
     console.clear();
     const { answer } = await inquirer.prompt([
@@ -287,7 +277,6 @@ export class ClientQuestions {
         prefix: chalk.gray(" Press <ESC> to return to previous page.\n"),
         name: "answer",
         choices: [
-          { type: "separator" },
           { name: "Delete selected", value: "DELETE" },
           { name: "Restore selected", value: "RESTORE" },
         ],
@@ -300,10 +289,9 @@ export class ClientQuestions {
     files: drive_v3.Schema$File[]
   ): Promise<drive_v3.Schema$File | "RESTORE" | "DELETE"> {
     console.clear();
-    const answer = await interactivePrompt({
+    const answer = await interactiveList({
       message: "Select trash action or select action: ",
       pageSize: 12,
-      prefix: chalk.gray("Press <ESC> to return to previous page.\n"),
       choices: [
         ...files.map((file) => ({
           name: `${file.name} ${
@@ -318,5 +306,24 @@ export class ClientQuestions {
       ],
     });
     return files.find((x) => x.name === answer) || (answer as "DELETE" | "RESTORE");
+  }
+
+  public async item_operation() {
+    console.clear();
+    const msg = "Choose operation for item/s: ";
+    const { operation } = await inquirer.prompt([
+      {
+        message: msg,
+        type: "list",
+        name: "operation",
+        pageSize: 12,
+        choices: [
+          { name: "Move", value: "MOVE" },
+          { name: "Delete", value: "DELETE" },
+          { name: "Trash", value: "TRASH" },
+        ],
+      },
+    ]);
+    return operation;
   }
 }

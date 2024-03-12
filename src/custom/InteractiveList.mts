@@ -14,6 +14,7 @@ declare module "@inquirer/core" {
   ): Prompt<Value, KeyValue, Config>;
 }
 
+import stringWidth from "string-width";
 import type { CancelablePromise, Context, PartialDeep, Prettify } from "@inquirer/type";
 import {
   createPrompt,
@@ -27,10 +28,10 @@ import {
   isUpKey,
   isDownKey,
   isNumberKey,
-  Separator,
   makeTheme,
   type Theme,
 } from "@inquirer/core";
+import { Separator } from "./Separator.mjs";
 
 import chalk from "chalk";
 import figures from "figures";
@@ -67,6 +68,7 @@ type SelectConfig<Value, KeyValue> = {
   default?: unknown;
   theme?: PartialDeep<Theme<SelectTheme>>;
   prefix?: string;
+  sufix?: string;
 };
 
 function isSelectable<Value>(item: Item<Value>): item is Choice<Value> {
@@ -83,7 +85,9 @@ export default async <Value, KeyValue>(options: SelectConfig<Value, KeyValue>) =
         actions,
         prefix: initPrefix,
         actionMsg,
+        sufix = chalk.gray("Press <ESC> to return to previous page"),
       } = config;
+      const styledActionMessage = actionMsg ? chalk.underline.italic(actionMsg) : "";
 
       const firstRender = useRef(true);
       const theme = makeTheme<SelectTheme>(selectTheme, config.theme);
@@ -111,7 +115,7 @@ export default async <Value, KeyValue>(options: SelectConfig<Value, KeyValue>) =
 
       useKeypress(async (key, _rl) => {
         if (isEnterKey(key)) {
-          setStatus("done");
+          // setStatus("done");
           done(selectedChoice.value);
         } else if (
           isUpKey(key) ||
@@ -148,17 +152,17 @@ export default async <Value, KeyValue>(options: SelectConfig<Value, KeyValue>) =
           const keyChoice = actions?.find((x) => !isSeparator(x) && x.key === key.name);
           if (keyChoice && !isSeparator(keyChoice)) {
             keyChoice;
-            setStatus("done");
+            // setStatus("done");
             done(keyChoice.value);
           }
         }
       });
 
-      const message = theme.style.message(config.message);
-      let helpTip;
+      const message = chalk.italic(theme.style.message(config.message));
+      // let helpTip;
       if (firstRender.current && items.length <= pageSize) {
         firstRender.current = false;
-        helpTip = theme.style.help("(Use arrow keys)");
+        // helpTip = theme.style.help("(Use arrow keys)");
       }
 
       let page = usePagination<Item<Value>>({
@@ -176,7 +180,7 @@ export default async <Value, KeyValue>(options: SelectConfig<Value, KeyValue>) =
           }
           const color = isActive ? theme.style.highlight : (x: string) => x;
           const cursor = isActive ? theme.icon.cursor : ` `;
-          return color(`${cursor} ${line}`);
+          return color(chalk.italic(`${cursor} ${line}`));
         },
         pageSize,
         loop,
@@ -188,32 +192,33 @@ export default async <Value, KeyValue>(options: SelectConfig<Value, KeyValue>) =
         return `${prefix} ${message} ${theme.style.answer(answer)}`;
       }
 
-      page = page.split("(Use arrow keys to reveal more choices)")[0];
-
+      // page = page.split("(Use arrow keys to reveal more choices)")[0];
       const keyActions =
         actions && actions?.length > 0
           ? actions
-              ?.map((action) =>
+              ?.map((action, id) =>
                 !isSeparator(action)
-                  ? `${action.name} ${chalk.cyanBright("[" + action.key + "]")}`
+                  ? `${action.name} ${chalk.blueBright("[" + action.key + "]")}`
                   : action.separator
               )
               .join("\n")
           : "";
 
-      const keyActionOutput = [actionMsg, keyActions].filter(Boolean).join("\n\n");
-
+      const keyActionOutput = [styledActionMessage, keyActions].filter(Boolean).join("\n\n");
       const choiceDescription = selectedChoice.description
         ? `\n${selectedChoice.description}`
         : ``;
 
-      const coloredSeparator = new Separator().separator;
+      const separator = new Separator(process.stdout.columns).separator;
 
-      return `${[prefix, message, helpTip]
-        .filter(Boolean)
-        .join("")}\n${coloredSeparator}\n${page}${choiceDescription}${
-        ansiEscapes.cursorHide
-      }\n${coloredSeparator}\n${keyActionOutput}`;
+      const lheader = [prefix, message].filter(Boolean).join("");
+      const header =
+        lheader +
+        " ".repeat(process.stdout.columns - stringWidth(lheader) - stringWidth(sufix)) +
+        chalk.gray(sufix);
+
+      return `${header}\n${separator}\n${page}${choiceDescription}\n${separator}\n${keyActionOutput}\n
+      ${ansiEscapes.cursorHide}`;
     }
   )(options);
 

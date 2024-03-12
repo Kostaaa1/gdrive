@@ -7,14 +7,12 @@ import {
   makeTheme,
   type Theme,
   usePagination,
-  isBackspaceKey,
 } from "@inquirer/core";
 import type { PartialDeep } from "@inquirer/type";
 import fs from "fs/promises";
 import path from "path";
 import ansiEscapes from "ansi-escapes";
 import { statSync, writeFileSync } from "fs";
-import chalk from "chalk";
 
 type InputConfig = {
   message: string;
@@ -22,16 +20,6 @@ type InputConfig = {
   transformer?: (value: string, { isFinal }: { isFinal: boolean }) => string;
   validate?: (value: string) => boolean | string | Promise<string | boolean>;
   theme?: PartialDeep<Theme>;
-};
-
-const isDirectory = (item: string) => {
-  try {
-    const v = !item.startsWith(path.sep) ? `${path.sep}${item}` : item;
-    const stats = statSync(v);
-    return stats.isDirectory();
-  } catch (error) {
-    return false;
-  }
 };
 
 export const getPathItems = async (p: string): Promise<string[]> => {
@@ -83,8 +71,8 @@ export default createPrompt<string, InputConfig>((config, done) => {
           done(answer);
         }
       } else {
+        // setValue(value);
         setPaths([]);
-        setValue(value);
         rl.write(value);
       }
     } else if (key.name === "tab") {
@@ -95,26 +83,20 @@ export default createPrompt<string, InputConfig>((config, done) => {
         setValue(defaultValue);
       } else {
         const p = paths.length === 0 ? await getPathItems(value) : paths;
-        if (p.length === 0) {
-          writeFileSync(
-            "/mnt/c/Users/kosta/OneDrive/Desktop/imgs/transformed/bug.txt",
-            JSON.stringify(
-              { line: rl.line, paths, value, empty: "EMPTY AS FUCKKKKKKKK" },
-              null,
-              2
-            )
-          );
-          setPaths([]);
-          setValue(rl.line);
+        setPaths(p);
+
+        if (p.length === 0 || value.length === 0) {
+          // setPaths([]);
+          // setValue(rl.line);
           // rl.write(value);
+          rl.clearLine(0);
           return;
         }
 
         const base = paths.length === 0 && value.endsWith(path.sep) ? value : path.dirname(value);
-        setPaths(p);
         const newPaths = p.map((x) => x + path.sep);
-        let next: number;
 
+        let next: number;
         // @ts-ignore // key.shift
         if (paths.length > 0 && key.shift) {
           next = active > 0 ? active - 1 : paths.length - 1;

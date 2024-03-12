@@ -3,12 +3,9 @@ import internal, { Readable } from "stream";
 import fs, { readdirSync } from "fs";
 import mime from "mime";
 import { exec } from "child_process";
-import { promisify } from "util";
 import open from "open";
 import path from "path";
 import { readdir, mkdir } from "fs/promises";
-import { drive_v3 } from "googleapis";
-import { SingleBar } from "cli-progress";
 
 export function formatDate(date: string) {
   const formattedDate = new Date(date).toLocaleString("en-US", {
@@ -43,16 +40,30 @@ export function convertBytes(bytes: string) {
   return output[1].split(".")[0] + output[0];
 }
 
-export const checkIfFolder = (filePath: string) => {
-  return new Promise((resolve, reject) => {
-    fs.stat(filePath, (err, stats) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve(stats.isDirectory());
+export const isDirectory = (path: string): Promise<boolean> => {
+  if (fs.existsSync(path)) {
+    return new Promise((resolve, reject) => {
+      fs.stat(path, (err, stats) => {
+        if (err) {
+          if (err.code === "ENOENT") {
+            reject(new Error("Path does not exist"));
+          } else {
+            reject(err);
+          }
+        } else {
+          if (stats.isFile()) {
+            resolve(false);
+          } else if (stats.isDirectory()) {
+            resolve(true);
+          } else {
+            reject(new Error("Path is neither a file nor a directory"));
+          }
+        }
+      });
     });
-  });
+  } else {
+    throw new Error("The path that you provided is invalid.");
+  }
 };
 
 export function parseFileExtension(name: string, mimeType: string): string {
@@ -102,8 +113,7 @@ export async function getUrlMimeType(url: string): Promise<string | undefined> {
 
 export async function convertUrlToStream(url: string): Promise<internal.PassThrough> {
   const res = await axios.get(url, { responseType: "stream" });
-  const stream = res.data;
-  return stream;
+  return res.data;
 }
 
 export async function convertPathToStream(filePath: string): Promise<internal.Readable> {
@@ -123,7 +133,7 @@ export async function convertPathToStream(filePath: string): Promise<internal.Re
       stream.emit("error", err);
     });
 
-  stream._read = function () {
+  stream._read = () => {
     fileStream.resume();
   };
 
@@ -135,17 +145,18 @@ async function findValidFile(dir: string, base: string) {
   return files.find((x) => x.split(".")[0] === base);
 }
 
+export const stop = (ms: number = 500) => new Promise((res) => setTimeout(res, ms));
+
 export const isExtensionValid = (p: string) => {
-  // const extensionRegex = /\.(mp4|jpg|jpeg|png|gif|pdf|wav|mp3|docx)$/i;
   const extensionRegex = /\.(mp4|jpg|jpeg|png|gif|pdf|wav|mp3|docx)/i;
   return extensionRegex.test(p);
 };
 
-// export const isExtensionValid2 = (p: string) => {
-//   const ext = ["mp4", "jpg", "jpeg", "png", "gif", "pdf", "wav", "mp3", "docx"];
-//   const base = path.extname(p);
-//   return ext.includes(base);
-// };
+export const notify = (message: string, ms: number = 500) =>
+  new Promise((res) => {
+    console.log(message);
+    setTimeout(res, ms);
+  });
 
 export async function openFile(filePath: string) {
   const dir = path.dirname(filePath);
@@ -155,18 +166,17 @@ export async function openFile(filePath: string) {
 
   if (!isValid) {
     const validBase = await findValidFile(dir, base);
-    console.log("BASE: ", validBase);
     if (validBase) {
       base = validBase;
     } else {
-      console.log("Path invalid. Make sure you are using the existing filePath.");
+      console.log("Path invalid. Make sure you are using the existing file path.");
       return;
     }
   }
 
   const newPath = path.join(dir, base);
   if (!fs.existsSync(dir) || !fs.existsSync(newPath)) {
-    console.log("Path invalid. Make sure you are using the existing filePath.");
+    console.log("Path invalid. Make sure you are using the existing file path.");
     return;
   }
 
@@ -176,8 +186,12 @@ export async function openFile(filePath: string) {
       break;
     case "linux":
       try {
-        console.log(newPath);
-        await promisify(exec)(`xdg-open ${newPath}`);
+        exec(`xdg-open "${newPath}"`, (error, stdout, stderr) => {
+          if (error) {
+            console.error(`Error: ${error.message}`);
+            return;
+          }
+        });
       } catch (error) {
         console.error(
           "Failed to open with xdg-open, check if you have se the default media player in your linux environment"
