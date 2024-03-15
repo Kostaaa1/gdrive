@@ -1,40 +1,40 @@
 import {
   DeleteOpts,
   FileActions,
-  NewFolderActions,
+  FolderActions,
+  ItemOperations,
+  MainActions,
+  TFile,
   TrashActions,
-  UploadOpts,
 } from "../types/types.js";
 import chalk from "chalk";
-import type { drive_v3 } from "googleapis";
 import inquirer from "inquirer";
-import { isExtensionValid } from "../utils/utils.js";
+import { isExtensionValid, isGdriveFolder, notify } from "../utils/utils.js";
 import InterruptedPrompt from "inquirer-interrupted-prompt";
 // @ts-ignore
 import { PathPrompt } from "inquirer-path";
 import interactiveList from "../custom/InteractiveList.mjs";
-import { Separator } from "../custom/Separator.mjs";
-import stringWidth from "string-width";
+import { existsSync } from "fs";
+import checkboxPrompt from "../custom/Checkbox.mjs";
 
 inquirer.registerPrompt("path", PathPrompt);
 InterruptedPrompt.fromAll(inquirer);
 
 export class ClientQuestions {
-  private static instance: ClientQuestions | null = null;
-
-  public static getInstance(): ClientQuestions {
-    if (!this.instance) {
-      this.instance = new ClientQuestions();
-    }
-    return this.instance;
-  }
-
-  public async input_path(message: string): Promise<string> {
-    console.clear();
+  public async input_path(message: string, clearConsole = true): Promise<string | undefined> {
+    if (clearConsole) console.clear();
     const { path } = await inquirer.prompt([
       { type: "path", name: "path", message, default: process.cwd() },
     ]);
-    return path;
+
+    if (existsSync(path)) {
+      return path;
+    } else {
+      await notify(
+        "The path that you provided is incorrect. Make sure you are providing valid path."
+      );
+      return undefined;
+    }
   }
 
   public async confirm(message: string): Promise<boolean> {
@@ -69,38 +69,63 @@ export class ClientQuestions {
     return newName;
   }
 
+  public async checkbox(message: string, items: TFile[]): Promise<TFile[]> {
+    console.clear();
+    const selected = await checkboxPrompt({
+      message,
+      choices: items.map(
+        (item) =>
+          item && {
+            ...item,
+            name: `${item.name} ${isGdriveFolder(item.mimeType) ? chalk.gray("(folder)") : ""}`,
+            value: item,
+          }
+      ),
+    });
+
+    if (selected.length === 0) {
+      await notify("No items selected, make sure you have selected items in order to proceed.");
+      await this.checkbox(message, items);
+    }
+
+    return selected;
+  }
+
   public async main_questions(
     items: { name: string; value: string; mimeType: string }[],
-    storageSize: { totalStorage: number; usedStorage: number } | null
-  ) {
+    storageSizeMsg: string | undefined
+  ): Promise<MainActions> {
     console.clear();
     const answer = await interactiveList({
       message: "Your root folder/files: ",
-      sufix: `Used ${storageSize?.usedStorage}MB of ${storageSize?.totalStorage}GB`,
+      sufix: storageSizeMsg,
       choices: [
         ...items.map((file) => ({
-          name: `${file.name} ${
-            file.mimeType === "application/vnd.google-apps.folder" ? chalk.gray("(folder)") : ""
-          }`,
+          name: `${file.name} ${isGdriveFolder(file.mimeType) ? chalk.gray("(folder)") : ""}`,
           value: file,
         })),
       ],
       actions: [
         { name: "Manage Trash", value: "TRASH", key: "t" },
         {
-          name: "Upload root folder/file",
+          name: "Upload from your device",
           value: "UPLOAD",
-          key: "v",
+          key: "u",
         },
         {
-          name: "Create empty folder",
+          name: "Create new empty folder",
           value: "CREATE",
-          key: "z",
+          key: "n",
+        },
+        {
+          name: "Operate with items",
+          value: "ITEM_OPERATIONS",
+          key: "o",
         },
         {
           name: "Open Google Drive in your browser",
           value: "OPEN_DRIVE",
-          key: "o",
+          key: "g",
         },
         {
           name: "Preview file from your local machine",
@@ -108,60 +133,29 @@ export class ClientQuestions {
           key: "p",
         },
         {
-          name: "Operate with multiple files",
-          value: "CHECKBOX",
-          key: "w",
-        },
-        {
           name: "Exit",
           value: "EXIT",
-          key: "q",
+          key: "x",
         },
       ],
     });
-    return answer;
-  }
-
-  public async folder_questions_1(
-    folders: {
-      name: string;
-      value: string;
-    }[],
-    message: string
-  ): Promise<string> {
-    console.clear();
-    const { fileName } = await inquirer.prompt([
-      {
-        message,
-        name: "fileName",
-        type: "list",
-        pageSize: 10,
-        // choices: [{ type: "separator" }, ...folders],
-        choices: folders,
-      },
-    ]);
-    return fileName;
+    return answer as MainActions;
   }
 
   public async folder_questions(
-    files: drive_v3.Schema$File[],
+    files: TFile[],
     folderName: string
-  ): Promise<string | drive_v3.Schema$File> {
+  ): Promise<FolderActions | TFile> {
     console.clear();
     const keyActions = [
+      { name: "Upload from your device", value: "UPLOAD", key: "u" },
       { name: "Rename Folder", value: "RENAME", key: "r" },
-      { name: "Delete/Trash Folder", value: "DELETE", key: "d" },
+      { name: "Operate with items", value: "ITEM_OPERATIONS", key: "o" },
       {
-        name: "Download folder",
-        value: "DOWNLOAD",
-        key: "e",
-      },
-      {
-        name: "Create empty folder",
+        name: "Create new empty folder",
         value: "CREATE",
-        key: "v",
+        key: "n",
       },
-      { name: "Upload folder/file", value: "UPLOAD", key: "u" },
     ];
 
     if (files.length > 0) {
@@ -181,7 +175,7 @@ export class ClientQuestions {
         actionMsg: `Folder actions:`,
         actions: keyActions,
       });
-      return answer;
+      return answer as FolderActions;
     } else {
       const { res } = await inquirer.prompt([
         {
@@ -197,27 +191,7 @@ export class ClientQuestions {
     }
   }
 
-  public async new_folder_questions(): Promise<NewFolderActions> {
-    console.clear();
-    const { answer } = await inquirer.prompt([
-      {
-        message: "Create / Upload folder: ",
-        name: "answer",
-        type: "list",
-        pageSize: 10,
-        choices: [
-          { name: "📁 Create empty folder", value: "CREATE" },
-          {
-            name: "📁 Upload folder from your machine",
-            value: "UPLOAD",
-          },
-        ],
-      },
-    ]);
-    return answer;
-  }
-
-  public async file_questions_1(folder_content: string): Promise<FileActions> {
+  public async selected_item(folder_content: string): Promise<FileActions> {
     console.clear();
     const { answer } = await inquirer.prompt([
       {
@@ -226,16 +200,15 @@ export class ClientQuestions {
         type: "list",
         pageSize: 10,
         choices: [
-          // { type: "separator" },
           { name: "Rename", value: "RENAME" },
           {
             name: "Delete/Trash",
             value: "DELETE",
           },
-          {
-            name: "Move file",
-            value: "MOVE",
-          },
+          // {
+          //   name: "Move file",
+          //   value: "MOVE",
+          // },
           {
             name: "Download",
             value: "DOWNLOAD",
@@ -268,26 +241,30 @@ export class ClientQuestions {
     return answer.trim() as DeleteOpts;
   }
 
-  public async trash_file_question(): Promise<TrashActions> {
-    console.clear();
-    const { answer } = await inquirer.prompt([
+  public async item_operation(): Promise<ItemOperations> {
+    const { operation } = await inquirer.prompt([
       {
+        message: "📁 Choose folder/file operation: ",
         type: "list",
-        message: `Choose ${chalk.blueBright.underline("Trash")} Action: `,
-        prefix: chalk.gray(" Press <ESC> to return to previous page.\n"),
-        name: "answer",
+        name: "operation",
+        pageSize: 12,
         choices: [
-          { name: "Delete selected", value: "DELETE" },
-          { name: "Restore selected", value: "RESTORE" },
+          { name: "Delete", value: "DELETE" },
+          { name: "Trash", value: "TRASH" },
+          { name: "Download", value: "DOWNLOAD" },
         ],
       },
     ]);
-    return answer as TrashActions;
+    return operation as ItemOperations;
   }
 
-  public async trash_questions(
-    files: drive_v3.Schema$File[]
-  ): Promise<drive_v3.Schema$File | "RESTORE" | "DELETE"> {
+  public async trash(files: TFile[]): Promise<TFile[]> {
+    console.clear();
+    const selected = await this.checkbox("Select items: ", files);
+    return selected;
+  }
+
+  public async trash_questions(files: TFile[]): Promise<TFile | "RESTORE" | "DELETE"> {
     console.clear();
     const answer = await interactiveList({
       message: "Select trash action or select action: ",
@@ -308,22 +285,41 @@ export class ClientQuestions {
     return files.find((x) => x.name === answer) || (answer as "DELETE" | "RESTORE");
   }
 
-  public async item_operation() {
+  public async trash_file_question(): Promise<TrashActions> {
     console.clear();
-    const msg = "Choose operation for item/s: ";
-    const { operation } = await inquirer.prompt([
+    const { answer } = await inquirer.prompt([
       {
-        message: msg,
         type: "list",
-        name: "operation",
-        pageSize: 12,
+        message: `Choose ${chalk.blueBright.underline("Trash")} Action: `,
+        prefix: chalk.gray(" Press <ESC> to return to previous page.\n"),
+        name: "answer",
         choices: [
-          { name: "Move", value: "MOVE" },
-          { name: "Delete", value: "DELETE" },
-          { name: "Trash", value: "TRASH" },
+          { name: "Delete selected", value: "DELETE" },
+          { name: "Restore selected", value: "RESTORE" },
         ],
       },
     ]);
-    return operation;
+    return answer as TrashActions;
   }
 }
+
+// public async folder_questions_1(
+//   folders: {
+//     name: string;
+//     value: string;
+//   }[],
+//   message: string
+// ): Promise<string> {
+// console.clear();
+//   const { fileName } = await inquirer.prompt([
+//     {
+//       message,
+//       name: "fileName",
+//       type: "list",
+//       pageSize: 10,
+//       // choices: [{ type: "separator" }, ...folders],
+//       choices: folders,
+//     },
+//   ]);
+//   return fileName;
+// }

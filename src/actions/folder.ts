@@ -1,52 +1,67 @@
 import chalk from "chalk";
 import { existsSync, readdirSync } from "fs";
 import path from "path";
-import { isDirectory, convertPathToStream, getMimeType } from "../utils/utils.js";
+import { isDirectory, convertPathToStream, getMimeType, isGdriveFolder } from "../utils/utils.js";
 import { SingleBar } from "cli-progress";
-import type { drive_v3 } from "googleapis";
-import { mkdir } from "fs/promises";
-import { processSelectedFile } from "./file.js";
 import { googleDrive, questions } from "../config/config.js";
-import { processMainActions } from "../index.js";
+import { processMainActions, processMultipleItems } from "../index.js";
 import { processUploadFromPath } from "./upload.js";
+import { FolderActions, TFile } from "../types/types.js";
 
-const processDownloadFolder = async (
+const { delete_questions, confirm, folder_questions, input } = questions;
+
+export const processFolderActions = async (
   folderName: string,
-  files: drive_v3.Schema$File[],
-  repeatData: any
+  repeatData?: { action: FolderActions; data: string }
 ) => {
-  const { input_path } = questions;
-  if (repeatData) {
-    console.clear();
-    console.log(
-      `The folder ${chalk.blueBright(
-        folderName
-      )}, already exists on the provided path (${chalk.gray(repeatData.data)}).`
-    );
-  }
+  const folderId = await googleDrive.getFolderIdWithName(folderName);
+  const selectedFolder = { name: folderName, id: folderId };
+  const files = await googleDrive.getFolderItems(folderId);
+  try {
+    const res = repeatData?.action || (await folder_questions(files, selectedFolder.name));
 
-  const folderPath = await input_path("Provide a path where to store the folder: ");
-  const progressBar = new SingleBar({
-    format: "Progress [{bar}] {percentage}% | ETA: {eta}s | {value}/{total}",
-  });
-  progressBar.start(files.length, 0);
-
-  const newPath = path.join(folderPath, folderName);
-  if (!existsSync(newPath)) {
-    await mkdir(newPath);
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      await googleDrive.downloadFile(path.join(newPath, file.name!), file.id!);
-      progressBar.increment();
-
-      if (i === files.length - 1) {
-        progressBar.stop();
-      }
+    switch (res) {
+      case "RENAME":
+        try {
+          const new_name = await input(
+            `Rename folder ${chalk.blueBright(selectedFolder.name)}: `
+          );
+          await googleDrive.rename(new_name, selectedFolder.id);
+          await processFolderActions(new_name);
+        } catch (error) {
+          await processFolderActions(selectedFolder.name);
+        }
+        break;
+      case "CREATE":
+        const newName = await input("Enter new folder name: ");
+        await googleDrive.createFolder(newName, selectedFolder.id);
+        await processFolderActions(selectedFolder.name);
+        break;
+      case "UPLOAD":
+        // await processUploadActions(folderId, folderName);
+        await processUploadFromPath({ name: folderName, parentId: folderId });
+        await processFolderActions(folderName);
+        break;
+      case "ITEM_OPERATIONS":
+        await processMultipleItems(files);
+        break;
+      default:
+        if (typeof res !== "string") {
+          const { name, mimeType } = res;
+          // mimeType === "application/vnd.google-apps.folder"
+          //   ? await processFolderActions(name!)
+          //   : await processSelectedFile(res, { id: folderId, name: folderName });
+          if (isGdriveFolder(mimeType)) {
+          }
+        }
+        break;
     }
-    await processFolderActions(folderName);
-  } else {
-    await processFolderActions(folderName, { action: "DOWNLOAD", data: newPath });
+  } catch (error) {
+    // if (selectedFolder.name) {
+    //   await processFolderActions(folderName);
+    // } else {
+    await processMainActions();
+    // }
   }
 };
 
@@ -99,85 +114,27 @@ export const processSingleFolderUpload = async (
 
 export const processDeleteActions = async (folderName: string, folderId: string) => {
   try {
-    const { delete_questions, confirm } = questions;
     const choice = await delete_questions();
 
     const actions = {
       DELETE: async () => {
-        const confirmed = await confirm(
-          "Are you sure that you want to delete selceted item forver?"
-        );
+        const confirmed = await confirm("Are you sure that you want to delete this item forver?");
         if (confirmed) await googleDrive.deleteItem(folderId);
       },
       TRASH: async () => {
         const confirmed = await confirm(
           `Are you sure? ${chalk.gray(
-            "(in the next 30 days you will be able to recover it from)"
+            "(You will be able to recover the item from trash in the next 30 days.)"
           )}`
         );
         if (confirmed) await googleDrive.moveToTrash(folderId);
       },
     };
+
     await actions[choice]();
     await processMainActions();
   } catch (error) {
-    processFolderActions(folderName);
-  }
-};
-
-export const processFolderActions = async (
-  folderName: string,
-  repeatData?: { action: string; data: string }
-) => {
-  const { folder_questions, input } = questions;
-
-  const folderId = await googleDrive.getFolderIdWithName(folderName);
-  const selectedFolder = { name: folderName, id: folderId };
-  const files = await googleDrive.listFolderFiles(folderId);
-  try {
-    const res = repeatData?.action || (await folder_questions(files, selectedFolder.name));
-    switch (res) {
-      case "RENAME":
-        try {
-          const new_name = await input(
-            `Rename folder ${chalk.blueBright(selectedFolder.name)}: `
-          );
-          await googleDrive.rename(new_name, selectedFolder.id);
-          await processFolderActions(new_name);
-        } catch (error) {
-          await processFolderActions(selectedFolder.name);
-        }
-        break;
-      case "DOWNLOAD":
-        await processDownloadFolder(folderName, files, repeatData);
-        break;
-      case "DELETE":
-        await processDeleteActions(folderName, folderId);
-        break;
-      case "CREATE":
-        const newName = await input("Enter new folder name: ");
-        await googleDrive.createFolder(newName, selectedFolder.id);
-        await processFolderActions(selectedFolder.name);
-        break;
-      case "UPLOAD":
-        // await processUploadActions(folderId, folderName);
-        await processUploadFromPath({ name: folderName, parentId: folderId });
-        await processFolderActions(folderName);
-        break;
-      default:
-        if (typeof res !== "string") {
-          const { name, mimeType } = res;
-          mimeType === "application/vnd.google-apps.folder"
-            ? await processFolderActions(name!)
-            : await processSelectedFile(res, { id: folderId, name: folderName });
-        }
-        break;
-    }
-  } catch (error) {
-    // if (selectedFolder.name) {
-    //   await processFolderActions(folderName);
-    // } else {
-    await processMainActions();
-    // }
+    console.log(error);
+    // await processFolderActions(folderName);
   }
 };

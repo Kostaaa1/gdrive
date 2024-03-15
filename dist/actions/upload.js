@@ -5,7 +5,8 @@ import { processSingleFolderUpload } from "./folder.js";
 export const processUploadFromPath = async (parent) => {
     const { input_path } = questions;
     const res_path = await input_path("📁 Provide a destination for upload: ");
-    console.log("DSADKOSA", res_path, parent);
+    if (!res_path)
+        return;
     if (await isDirectory(res_path)) {
         await processSingleFolderUpload(res_path, parent);
     }

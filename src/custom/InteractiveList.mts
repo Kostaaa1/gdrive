@@ -85,7 +85,7 @@ export default async <Value, KeyValue>(options: SelectConfig<Value, KeyValue>) =
         actions,
         prefix: initPrefix,
         actionMsg,
-        sufix = chalk.gray("Press <ESC> to return to previous page"),
+        sufix = chalk.gray("Press <ESC> to return"),
       } = config;
       const styledActionMessage = actionMsg ? chalk.underline.italic(actionMsg) : "";
 
@@ -214,7 +214,7 @@ export default async <Value, KeyValue>(options: SelectConfig<Value, KeyValue>) =
       const lheader = [prefix, message].filter(Boolean).join("");
       const header =
         lheader +
-        " ".repeat(process.stdout.columns - stringWidth(lheader) - stringWidth(sufix)) +
+        " ".repeat(process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix)) +
         chalk.gray(sufix);
 
       return `${header}\n${separator}\n${page}${choiceDescription}\n${separator}\n${keyActionOutput}\n

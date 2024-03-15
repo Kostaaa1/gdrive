@@ -1,25 +1,28 @@
 import chalk from "chalk";
 import inquirer from "inquirer";
-import { isExtensionValid } from "../utils/utils.js";
+import { isExtensionValid, isGdriveFolder, notify } from "../utils/utils.js";
 import InterruptedPrompt from "inquirer-interrupted-prompt";
 // @ts-ignore
 import { PathPrompt } from "inquirer-path";
 import interactiveList from "../custom/InteractiveList.mjs";
+import { existsSync } from "fs";
+import checkboxPrompt from "../custom/Checkbox.mjs";
 inquirer.registerPrompt("path", PathPrompt);
 InterruptedPrompt.fromAll(inquirer);
 export class ClientQuestions {
-    static getInstance() {
-        if (!this.instance) {
-            this.instance = new ClientQuestions();
-        }
-        return this.instance;
-    }
-    async input_path(message) {
-        console.clear();
+    async input_path(message, clearConsole = true) {
+        if (clearConsole)
+            console.clear();
         const { path } = await inquirer.prompt([
             { type: "path", name: "path", message, default: process.cwd() },
         ]);
-        return path;
+        if (existsSync(path)) {
+            return path;
+        }
+        else {
+            await notify("The path that you provided is incorrect. Make sure you are providing valid path.");
+            return undefined;
+        }
     }
     async confirm(message) {
         const { bool } = await inquirer.prompt([{ message, type: "confirm", name: "bool" }]);
@@ -49,33 +52,54 @@ export class ClientQuestions {
         }
         return newName;
     }
-    async main_questions(items, storageSize) {
+    async checkbox(message, items) {
+        console.clear();
+        const selected = await checkboxPrompt({
+            message,
+            choices: items.map((item) => item && {
+                ...item,
+                name: `${item.name} ${isGdriveFolder(item.mimeType) ? chalk.gray("(folder)") : ""}`,
+                value: item,
+            }),
+        });
+        if (selected.length === 0) {
+            await notify("No items selected, make sure you have selected items in order to proceed.");
+            await this.checkbox(message, items);
+        }
+        return selected;
+    }
+    async main_questions(items, storageSizeMsg) {
         console.clear();
         const answer = await interactiveList({
             message: "Your root folder/files: ",
-            sufix: `Used ${storageSize?.usedStorage}MB of ${storageSize?.totalStorage}GB`,
+            sufix: storageSizeMsg,
             choices: [
                 ...items.map((file) => ({
-                    name: `${file.name} ${file.mimeType === "application/vnd.google-apps.folder" ? chalk.gray("(folder)") : ""}`,
+                    name: `${file.name} ${isGdriveFolder(file.mimeType) ? chalk.gray("(folder)") : ""}`,
                     value: file,
                 })),
             ],
             actions: [
                 { name: "Manage Trash", value: "TRASH", key: "t" },
                 {
-                    name: "Upload root folder/file",
+                    name: "Upload from your device",
                     value: "UPLOAD",
-                    key: "v",
+                    key: "u",
                 },
                 {
-                    name: "Create empty folder",
+                    name: "Create new empty folder",
                     value: "CREATE",
-                    key: "z",
+                    key: "n",
+                },
+                {
+                    name: "Operate with items",
+                    value: "ITEM_OPERATIONS",
+                    key: "o",
                 },
                 {
                     name: "Open Google Drive in your browser",
                     value: "OPEN_DRIVE",
-                    key: "o",
+                    key: "g",
                 },
                 {
                     name: "Preview file from your local machine",
@@ -83,49 +107,25 @@ export class ClientQuestions {
                     key: "p",
                 },
                 {
-                    name: "Operate with multiple files",
-                    value: "CHECKBOX",
-                    key: "w",
-                },
-                {
                     name: "Exit",
                     value: "EXIT",
-                    key: "q",
+                    key: "x",
                 },
             ],
         });
         return answer;
     }
-    async folder_questions_1(folders, message) {
-        console.clear();
-        const { fileName } = await inquirer.prompt([
-            {
-                message,
-                name: "fileName",
-                type: "list",
-                pageSize: 10,
-                // choices: [{ type: "separator" }, ...folders],
-                choices: folders,
-            },
-        ]);
-        return fileName;
-    }
     async folder_questions(files, folderName) {
         console.clear();
         const keyActions = [
+            { name: "Upload from your device", value: "UPLOAD", key: "u" },
             { name: "Rename Folder", value: "RENAME", key: "r" },
-            { name: "Delete/Trash Folder", value: "DELETE", key: "d" },
+            { name: "Operate with items", value: "ITEM_OPERATIONS", key: "o" },
             {
-                name: "Download folder",
-                value: "DOWNLOAD",
-                key: "e",
-            },
-            {
-                name: "Create empty folder",
+                name: "Create new empty folder",
                 value: "CREATE",
-                key: "v",
+                key: "n",
             },
-            { name: "Upload folder/file", value: "UPLOAD", key: "u" },
         ];
         if (files.length > 0) {
             const answer = await interactiveList({
@@ -154,26 +154,7 @@ export class ClientQuestions {
             return res;
         }
     }
-    async new_folder_questions() {
-        console.clear();
-        const { answer } = await inquirer.prompt([
-            {
-                message: "Create / Upload folder: ",
-                name: "answer",
-                type: "list",
-                pageSize: 10,
-                choices: [
-                    { name: "📁 Create empty folder", value: "CREATE" },
-                    {
-                        name: "📁 Upload folder from your machine",
-                        value: "UPLOAD",
-                    },
-                ],
-            },
-        ]);
-        return answer;
-    }
-    async file_questions_1(folder_content) {
+    async selected_item(folder_content) {
         console.clear();
         const { answer } = await inquirer.prompt([
             {
@@ -182,16 +163,15 @@ export class ClientQuestions {
                 type: "list",
                 pageSize: 10,
                 choices: [
-                    // { type: "separator" },
                     { name: "Rename", value: "RENAME" },
                     {
                         name: "Delete/Trash",
                         value: "DELETE",
                     },
-                    {
-                        name: "Move file",
-                        value: "MOVE",
-                    },
+                    // {
+                    //   name: "Move file",
+                    //   value: "MOVE",
+                    // },
                     {
                         name: "Download",
                         value: "DOWNLOAD",
@@ -222,21 +202,26 @@ export class ClientQuestions {
         ]);
         return answer.trim();
     }
-    async trash_file_question() {
-        console.clear();
-        const { answer } = await inquirer.prompt([
+    async item_operation() {
+        const { operation } = await inquirer.prompt([
             {
+                message: "📁 Choose folder/file operation: ",
                 type: "list",
-                message: `Choose ${chalk.blueBright.underline("Trash")} Action: `,
-                prefix: chalk.gray(" Press <ESC> to return to previous page.\n"),
-                name: "answer",
+                name: "operation",
+                pageSize: 12,
                 choices: [
-                    { name: "Delete selected", value: "DELETE" },
-                    { name: "Restore selected", value: "RESTORE" },
+                    { name: "Delete", value: "DELETE" },
+                    { name: "Trash", value: "TRASH" },
+                    { name: "Download", value: "DOWNLOAD" },
                 ],
             },
         ]);
-        return answer;
+        return operation;
+    }
+    async trash(files) {
+        console.clear();
+        const selected = await this.checkbox("Select items: ", files);
+        return selected;
     }
     async trash_questions(files) {
         console.clear();
@@ -256,24 +241,41 @@ export class ClientQuestions {
         });
         return files.find((x) => x.name === answer) || answer;
     }
-    async item_operation() {
+    async trash_file_question() {
         console.clear();
-        const msg = "Choose operation for item/s: ";
-        const { operation } = await inquirer.prompt([
+        const { answer } = await inquirer.prompt([
             {
-                message: msg,
                 type: "list",
-                name: "operation",
-                pageSize: 12,
+                message: `Choose ${chalk.blueBright.underline("Trash")} Action: `,
+                prefix: chalk.gray(" Press <ESC> to return to previous page.\n"),
+                name: "answer",
                 choices: [
-                    { name: "Move", value: "MOVE" },
-                    { name: "Delete", value: "DELETE" },
-                    { name: "Trash", value: "TRASH" },
+                    { name: "Delete selected", value: "DELETE" },
+                    { name: "Restore selected", value: "RESTORE" },
                 ],
             },
         ]);
-        return operation;
+        return answer;
     }
 }
-ClientQuestions.instance = null;
+// public async folder_questions_1(
+//   folders: {
+//     name: string;
+//     value: string;
+//   }[],
+//   message: string
+// ): Promise<string> {
+// console.clear();
+//   const { fileName } = await inquirer.prompt([
+//     {
+//       message,
+//       name: "fileName",
+//       type: "list",
+//       pageSize: 10,
+//       // choices: [{ type: "separator" }, ...folders],
+//       choices: folders,
+//     },
+//   ]);
+//   return fileName;
+// }
 //# sourceMappingURL=clientQuestions.js.map

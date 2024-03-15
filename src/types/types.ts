@@ -1,26 +1,35 @@
+export type TFile = { name: string; id: string; value: string; mimeType: string };
+
 export type MainActions =
-  | "NEW_FILE"
-  | "NEW_FOLDER"
-  | "LIST"
-  | "OPEN_DRIVE"
+  | "ITEM_OPERATIONS"
+  | "UPLOAD"
+  | "CREATE"
   | "OPEN"
   | "TRASH"
-  | "EXIT";
+  | "OPEN_DRIVE"
+  | "OPEN"
+  | "EXIT"
+  | TFile;
 
-export type FolderActions = "RENAME" | "CREATE" | "DELETE" | "UPLOAD";
-// export type FolderActions = "RENAME" | "LIST" | "CREATE" | "DELETE" | "UPLOAD";
-export type FileActions = "DOWNLOAD" | "RENAME" | "INFO" | "DELETE" | "MOVE" | "OPEN";
-export type UploadFileActions = "LOCAL" | "URL";
-export type NewFolderActions = "CREATE" | "UPLOAD";
+export type FolderActions = "UPLOAD" | "RENAME" | "ITEM_OPERATIONS" | "CREATE";
+export type FileActions = "DOWNLOAD" | "RENAME" | "INFO" | "DELETE" | "TRASH" | "OPEN";
+export type ItemOperations = "DELETE" | "TRASH" | "DOWNLOAD";
+// export type FolderActions = "RENAME" | "DOWNLOAD" | "CREATE" | "DELETE" | "UPLOAD";
+// export type UploadFileActions = "LOCAL" | "URL";
+// export type NewFolderActions = "CREATE" | "UPLOAD";
 
 // Process types:
-export type ProcessFolderOpts = {
-  clear_console?: boolean;
-  name?: string;
-};
+// export type ProcessFolderOpts = {
+//   clear_console?: boolean;
+//   name?: string;
+// };
 
 export type DeleteOpts = "DELETE" | "TRASH";
-export type UploadOpts = "FOLDER" | "FILE";
-export type Folder1 = { name: string; id: string; path: string };
+// export type UploadOpts = "FOLDER" | "FILE";
 export type TrashActions = "DELETE" | "RESTORE";
-// export type TrashItemActions = "RESTORE" | "DELETE";
+export type StorageQuota = {
+  limit: string;
+  usage: string;
+  usageInDrive: string;
+  usageInDriveTrash: string;
+};

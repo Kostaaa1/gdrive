@@ -1,4 +1,3 @@
-import type { drive_v3 } from "googleapis";
 import { TrashActions } from "../types/types.js";
 import { notify } from "../utils/utils.js";
 import type { GoogleDriveService } from "../service/googleDriveService.js";
@@ -51,8 +50,7 @@ export const processTrashActions = async () => {
             await processMainActions();
             break;
           default:
-            const file: drive_v3.Schema$File = answer;
-            await processTrashFile(file.id!, googleDrive, trash_file_question);
+            await processTrashFile(answer.id, googleDrive, trash_file_question);
             break;
         }
       } else {

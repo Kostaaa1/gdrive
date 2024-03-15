@@ -2,7 +2,8 @@ import { createWriteStream, readFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { drive_v3, google } from "googleapis";
 import readline from "readline-sync";
-import { convertBytes, formatDate } from "../utils/utils.js";
+import { convertBytes, formatDate, formatStorageQuotaMessage } from "../utils/utils.js";
+import { TFile, StorageQuota } from "../types/types.js";
 
 const {
   GOOGLE_CLIENT_ID = "",
@@ -12,11 +13,6 @@ const {
 
 const { refresh_token } = JSON.parse(readFileSync("./token.json", "utf-8"));
 
-type DriveStorageSize = {
-  usedStorage: number;
-  totalStorage: number;
-};
-
 export class GoogleDriveService {
   public drive_client: drive_v3.Drive;
   private oauth2Client;
@@ -25,7 +21,6 @@ export class GoogleDriveService {
   private static clientSecret = GOOGLE_CLIENT_SECRET;
   private static redirectUri = GOOGLE_REDIRECT_URL;
   private static refreshToken = refresh_token;
-  private static instance: GoogleDriveService | null = null;
 
   public constructor() {
     const { clientId, clientSecret, redirectUri, refreshToken } = GoogleDriveService;
@@ -69,13 +64,6 @@ export class GoogleDriveService {
     }
   }
 
-  public static getInstance(): GoogleDriveService {
-    if (!GoogleDriveService.instance) {
-      GoogleDriveService.instance = new GoogleDriveService();
-    }
-    return GoogleDriveService.instance;
-  }
-
   public async getRootItems(): Promise<
     { name: string; value: string; id: string; mimeType: string }[]
   > {
@@ -115,13 +103,13 @@ export class GoogleDriveService {
     }
   }
 
-  public async listFolderFiles(folderId: string): Promise<drive_v3.Schema$File[]> {
+  public async getFolderItems(folderId: string): Promise<TFile[]> {
     try {
       const res = await this.drive_client.files.list({
         q: `'${folderId}' in parents and trashed=false`,
         fields: "files(id, name, mimeType, size)",
       });
-      return res.data.files || [];
+      return (res.data.files || []) as TFile[];
     } catch (error) {
       console.log(error);
       return [];
@@ -129,7 +117,7 @@ export class GoogleDriveService {
   }
 
   private async getFileCountInFolder(folderId: string): Promise<number> {
-    const files = await this.listFolderFiles(folderId);
+    const files = await this.getFolderItems(folderId);
     return files.length;
   }
 
@@ -233,11 +221,11 @@ export class GoogleDriveService {
     }
   }
 
-  public async downloadFile(path: string, driveFileId: string) {
+  public async downloadFile(path: string, fileId: string) {
     try {
       const fileStream = createWriteStream(path);
       const file = await this.drive_client.files.get(
-        { fileId: driveFileId, alt: "media" },
+        { fileId: fileId, alt: "media" },
         { responseType: "stream" }
       );
 
@@ -334,34 +322,37 @@ export class GoogleDriveService {
     return response;
   }
 
-  public async untrashAll(files: drive_v3.Schema$File[]) {
+  public async untrashAll(files: TFile[]) {
     for (const file of files) {
-      await this.drive_client.files.update({ fileId: file.id!, requestBody: { trashed: false } });
+      await this.drive_client.files.update({ fileId: file.id, requestBody: { trashed: false } });
     }
   }
 
-  public async listTrashFiles(): Promise<drive_v3.Schema$File[]> {
+  public async listTrashFiles(): Promise<TFile[]> {
     const res = await this.drive_client.files.list({
       q: "trashed=true",
       fields: "files(id, name, mimeType)",
     });
     const files = res.data.files;
-    return files && files.length > 0 ? files : [];
+    return files && files.length > 0 ? (files as TFile[]) : [];
   }
 
-  public async getDriveStorageSize(): Promise<DriveStorageSize | null> {
+  public async getDriveStorageSize(): Promise<string | undefined> {
     try {
       const driveInfo = await this.drive_client.about.get({
         fields: "storageQuota",
       });
-      // @ts-ignore
-      const { limit, usage } = driveInfo.data.storageQuota;
-      const totalStorage = parseFloat(limit) / (1024 * 1024 * 1024);
-      const usedStorage = +(parseFloat(usage) / (1024 * 1024)).toFixed(2);
-      return { usedStorage, totalStorage };
+      const { limit, usage, usageInDrive, usageInDriveTrash } = driveInfo.data.storageQuota!!;
+
+      if (limit && usage && usageInDrive && usageInDriveTrash) {
+        const data = { limit, usage, usageInDrive, usageInDriveTrash };
+        return formatStorageQuotaMessage(data);
+      }
+
+      return undefined;
     } catch (err) {
       console.log(err);
-      return null;
+      return undefined;
     }
   }
 }

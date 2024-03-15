@@ -5,7 +5,8 @@ import mime from "mime";
 import { exec } from "child_process";
 import open from "open";
 import path from "path";
-import { readdir, mkdir } from "fs/promises";
+import { readdir, access, mkdir } from "fs/promises";
+import chalk from "chalk";
 export function formatDate(date) {
     const formattedDate = new Date(date).toLocaleString("en-US", {
         year: "numeric",
@@ -70,9 +71,68 @@ export function parseFileExtension(name, mimeType) {
     const hasFileExtension = /\.(mp4|jpg|jpeg|png|gif|pdf|docx)$/i.test(name);
     return !hasFileExtension ? `${name}.${fileExt}` : name;
 }
-export async function createFolder(folderPath, folderName) {
-    const newPath = path.join(folderPath, folderName);
-    await mkdir(newPath);
+const pathExists = async (fpath) => {
+    try {
+        await access(fpath);
+        return true;
+    }
+    catch (error) {
+        if (error.code === "ENOENT") {
+            return false;
+        }
+        else {
+            throw error;
+        }
+    }
+};
+export const parsePathName = async (itemPath) => {
+    const hasAccess = await pathExists(itemPath);
+    if (!hasAccess)
+        return itemPath;
+    const isDir = await isDirectory(itemPath);
+    const numEnclosedRgx = /\((\d+)\)/;
+    const dirName = path.dirname(itemPath);
+    const baseName = path.basename(itemPath);
+    const allItems = await readdir(dirName);
+    const items = allItems
+        .filter((x) => (isDir ? x.startsWith(baseName) : x.startsWith(baseName.split(".")[0])))
+        .sort((a, b) => a.length - b.length);
+    const lastItem = items.slice(-1)[0];
+    let newName = dirName + path.sep;
+    if (isDir) {
+        const enclosed = lastItem.slice(-3);
+        const n = parseInt(enclosed[1]);
+        newName += numEnclosedRgx.test(enclosed)
+            ? `${baseName.split(enclosed)[0]} (${n + 1})`
+            : `${baseName} (0)`;
+    }
+    else {
+        const s = lastItem.split(".");
+        const name = s[0];
+        const ext = s[1];
+        const enclosed = name.slice(-3);
+        const n = parseInt(enclosed[1]);
+        newName += numEnclosedRgx.test(enclosed)
+            ? `${name.split(enclosed)[0]} (${n + 1}).${ext}`
+            : `${name} (0).${ext}`;
+    }
+    return newName;
+};
+export async function createFolder(folderPath) {
+    try {
+        if (fs.existsSync(folderPath)) {
+            const newName = await parsePathName(folderPath);
+            await mkdir(newName);
+            return newName;
+        }
+        else {
+            await mkdir(folderPath);
+            return folderPath;
+        }
+    }
+    catch (error) {
+        throw new Error("Error while creating a folder.");
+    }
 }
 export function getMimeType(filePath) {
     try {
@@ -81,13 +141,7 @@ export function getMimeType(filePath) {
         const fileName = filePath.slice(lastSlashIndex + 1);
         if (fs.existsSync(dest)) {
             const files = readdirSync(dest);
-            if (files.includes(fileName)) {
-                const mime_type = mime.getType(filePath);
-                return mime_type;
-            }
-            else {
-                return null;
-            }
+            return files.includes(fileName) ? mime.getType(filePath) : null;
         }
         else {
             return null;
@@ -143,7 +197,7 @@ export const isExtensionValid = (p) => {
     return extensionRegex.test(p);
 };
 export const notify = (message, ms = 500) => new Promise((res) => {
-    console.log(message);
+    console.log(chalk.redBright(message));
     setTimeout(res, ms);
 });
 export async function openFile(filePath) {
@@ -186,5 +240,33 @@ export async function openFile(filePath) {
             console.log("Unsupported platform for automatic file opening.");
             break;
     }
+}
+export function formatStorageQuotaMessage(storageQuota) {
+    // const usageBytes = parseInt(storageQuota.usage);
+    const limitBytes = parseInt(storageQuota.limit);
+    const usageInDriveBytes = parseInt(storageQuota.usageInDrive);
+    const bytesToGB = (bytes) => bytes / (1024 * 1024 * 1024);
+    const bytesToMB = (bytes) => bytes / (1024 * 1024);
+    const usedInDriveGB = bytesToGB(usageInDriveBytes);
+    const usedInDriveMB = bytesToMB(usageInDriveBytes);
+    const limitGB = bytesToGB(limitBytes);
+    const limitMB = bytesToMB(limitBytes);
+    let usedMessage, limitMessage;
+    if (usedInDriveGB >= 1) {
+        usedMessage = `Used ${usedInDriveGB.toFixed(2)} GB`;
+    }
+    else {
+        usedMessage = `Used ${usedInDriveMB.toFixed(2)} MB`;
+    }
+    if (limitGB >= 1) {
+        limitMessage = `${limitGB.toFixed(2)} GB`;
+    }
+    else {
+        limitMessage = `${limitMB.toFixed(2)} MB`;
+    }
+    return `${usedMessage} of ${limitMessage}`;
+}
+export function isGdriveFolder(type) {
+    return type === "application/vnd.google-apps.folder";
 }
 //# sourceMappingURL=utils.js.map

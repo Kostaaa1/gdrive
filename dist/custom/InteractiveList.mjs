@@ -13,7 +13,7 @@ function isSelectable(item) {
 }
 export default async (options) => {
     const answer = await createPrompt((config, done) => {
-        const { choices: items, loop = true, pageSize = 10, actions, prefix: initPrefix, actionMsg, sufix = chalk.gray("Press <ESC> to return to previous page"), } = config;
+        const { choices: items, loop = true, pageSize = 10, actions, prefix: initPrefix, actionMsg, sufix = chalk.gray("Press <ESC> to return"), } = config;
         const styledActionMessage = actionMsg ? chalk.underline.italic(actionMsg) : "";
         const firstRender = useRef(true);
         const theme = makeTheme(selectTheme, config.theme);
@@ -123,7 +123,7 @@ export default async (options) => {
         const separator = new Separator(process.stdout.columns).separator;
         const lheader = [prefix, message].filter(Boolean).join("");
         const header = lheader +
-            " ".repeat(process.stdout.columns - stringWidth(lheader) - stringWidth(sufix)) +
+            " ".repeat(process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix)) +
             chalk.gray(sufix);
         return `${header}\n${separator}\n${page}${choiceDescription}\n${separator}\n${keyActionOutput}\n
       ${ansiEscapes.cursorHide}`;

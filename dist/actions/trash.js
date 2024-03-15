@@ -43,8 +43,7 @@ export const processTrashActions = async () => {
                         await processMainActions();
                         break;
                     default:
-                        const file = answer;
-                        await processTrashFile(file.id, googleDrive, trash_file_question);
+                        await processTrashFile(answer.id, googleDrive, trash_file_question);
                         break;
                 }
             }
