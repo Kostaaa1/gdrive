@@ -14,7 +14,6 @@ export const processFolderActions = async (currentId: string, parentId?: string)
     const res = await folder_questions(files, folderName);
     let proceed: boolean = false;
     // const res = repeatData?.action || (await folder_questions(files, folderName));
-
     switch (res) {
       case "RENAME":
         const new_name = await input(`Rename folder ${chalk.blueBright(folderName)}: `);
