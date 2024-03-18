@@ -19,6 +19,7 @@ import chalk from "chalk";
 import figures from "figures";
 import ansiEscapes from "ansi-escapes";
 import { Separator as CustomSeparator } from "./Separator.mjs";
+import { notify } from "../utils/utils.js";
 
 type CheckboxTheme = {
   icon: {
@@ -92,7 +93,7 @@ export default createPrompt(
   <Value extends unknown>(config: Config<Value>, done: (value: Array<Value>) => void) => {
     const {
       instructions,
-      pageSize = 7,
+      pageSize = 10,
       loop = true,
       choices,
       required,
@@ -126,7 +127,10 @@ export default createPrompt(
         const selection = items.filter(isChecked);
         const isValid = await validate([...selection]);
         if (required && !items.some(isChecked)) {
-          setError("At least one choice must be selected");
+          // setError("At least one choice must be selected");
+          await notify(chalk.redBright("At least one choice must be selected"));
+          // @ts-ignore
+          done(null);
         } else if (isValid === true) {
           setStatus("done");
           done(selection.map((choice) => choice.value));
@@ -172,6 +176,7 @@ export default createPrompt(
     });
 
     const message = theme.style.message(config.message);
+
     const page = usePagination<Item<Value>>({
       items,
       active,

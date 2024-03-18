@@ -1,24 +1,24 @@
 import "dotenv/config";
 import { googleDrive, questions } from "./config/config.js";
-import { createFolder, parsePathName, isGdriveFolder, openFile, notify } from "./utils/utils.js";
+import { createFolder, parsePathName, isGdriveFolder, openFile } from "./utils/utils.js";
 import { processFolderActions } from "./actions/folder.js";
 import { processSelectedFile } from "./actions/file.js";
 import { processTrashActions } from "./actions/trash.js";
 import open from "open";
-import { processUploadFromPath } from "./actions/upload.js";
 import path from "path";
 import { TFile } from "./types/types.js";
 import { SingleBar } from "cli-progress";
+import { processUploadFromPath } from "./actions/upload.js";
 
-const { main_questions, checkbox, item_operation, input_path, input } = questions;
+const { checkbox, areYouSure, item_operation, input_path, input } = questions;
 
-const downloadDriveItem = async (item: TFile, folderPath: string) => {
+const downloadDriveFiles = async (item: TFile, folderPath: string) => {
   if (isGdriveFolder(item.mimeType)) {
     const items = await googleDrive.getFolderItems(item.id);
     const newPath = await createFolder(path.join(folderPath, item.name));
     for (let i = 0; i < items.length; i++) {
       const file = items[i];
-      await downloadDriveItem(file, newPath);
+      await downloadDriveFiles(file, newPath);
     }
   } else {
     const pathname = await parsePathName(path.join(folderPath, item.name));
@@ -26,14 +26,14 @@ const downloadDriveItem = async (item: TFile, folderPath: string) => {
   }
 };
 
-export const processMultipleItems = async (items: TFile[]) => {
+export const processMultipleItems = async (items: TFile[], parentId?: string) => {
   try {
     const selected = await checkbox("Select items: ", items);
     const operation = await item_operation();
     let cpath: string | undefined = undefined;
 
     if (operation === "DOWNLOAD") {
-      cpath = await input_path("Provide a path where to store the items: ", false);
+      cpath = await input_path("Provide a path where to store the items: ");
     }
 
     const progressBar = new SingleBar({
@@ -47,17 +47,15 @@ export const processMultipleItems = async (items: TFile[]) => {
       const item = selected[i];
       switch (operation) {
         case "DELETE":
-          const proceed = await confirm("Confirm delete?");
+          const proceed = await areYouSure("Confirm delete?");
           if (proceed) await googleDrive.deleteItem(item.id);
           break;
         case "TRASH":
           await googleDrive.moveToTrash(item.id);
           break;
         case "DOWNLOAD":
-          if (cpath) await downloadDriveItem(item, cpath);
+          if (cpath) await downloadDriveFiles(item, cpath);
           break;
-        // case "MOVE":
-        //   break;
       }
 
       if (i === selected.length - 1) {
@@ -65,9 +63,9 @@ export const processMultipleItems = async (items: TFile[]) => {
       }
     }
 
-    await processMainActions();
+    parentId ? await processFolderActions(parentId) : await processMainActions();
   } catch (error) {
-    await processMainActions();
+    parentId ? await processFolderActions(parentId) : await processMainActions();
   }
 };
 
@@ -75,7 +73,7 @@ export const processMainActions = async () => {
   try {
     const storageSizeMsg = await googleDrive.getDriveStorageSize();
     const folders = await googleDrive.getRootItems();
-    const answer = await main_questions(folders, storageSizeMsg);
+    const answer = await questions.main_questions(folders, storageSizeMsg);
 
     switch (answer) {
       case "ITEM_OPERATIONS":
@@ -92,9 +90,7 @@ export const processMainActions = async () => {
         break;
       case "OPEN":
         const filePath = await input_path("Enter the path for the file you want to preview: ");
-        if (filePath) {
-          await openFile(filePath);
-        }
+        if (filePath) await openFile(filePath);
         await processMainActions();
         break;
       case "TRASH":
@@ -108,12 +104,9 @@ export const processMainActions = async () => {
         process.exit();
       default:
         if (typeof answer !== "string") {
-          const { mimeType } = answer;
-          if (mimeType === "application/vnd.google-apps.folder") {
-            await processFolderActions(answer.name);
-          } else {
-            await processSelectedFile(answer);
-          }
+          isGdriveFolder(answer.mimeType)
+            ? await processFolderActions(answer.id)
+            : await processSelectedFile(answer);
           break;
         }
     }

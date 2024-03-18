@@ -1,6 +1,6 @@
 import axios from "axios";
 import internal, { Readable } from "stream";
-import fs, { readdirSync } from "fs";
+import fs, { readFileSync, readdirSync } from "fs";
 import mime from "mime";
 import { exec } from "child_process";
 import open from "open";
@@ -140,22 +140,27 @@ export async function createFolder(folderPath: string): Promise<string> {
   }
 }
 
-export function getMimeType(filePath: string): string | null {
-  try {
-    const lastSlashIndex = filePath.lastIndexOf("/");
-    const dest = filePath.slice(0, lastSlashIndex);
-    const fileName = filePath.slice(lastSlashIndex + 1);
+// export function getMimeType(filePath: string): string | null {
+//   try {
+//     const lastSlashIndex = filePath.lastIndexOf(path.sep);
+//     const dest = filePath.slice(0, lastSlashIndex);
+//     const fileName = filePath.slice(lastSlashIndex + 1);
+//     // const dest = path.dirname(filePath)
+//     // const fileName = path.basename(filePath)
+//     if (fs.existsSync(dest)) {
+//       const files = readdirSync(dest);
+//       return files.includes(fileName) ? mime.getType(filePath) : null;
+//     } else {
+//       return null;
+//     }
+//   } catch (err) {
+//     console.error(err);
+//     return null;
+//   }
+// }
 
-    if (fs.existsSync(dest)) {
-      const files = readdirSync(dest);
-      return files.includes(fileName) ? mime.getType(filePath) : null;
-    } else {
-      return null;
-    }
-  } catch (err) {
-    console.error(err);
-    return null;
-  }
+export function getMimeType(filePath: string): string | null {
+  return fs.existsSync(filePath) ? mime.getType(filePath) : null;
 }
 
 export async function getUrlMimeType(url: string): Promise<string | undefined> {

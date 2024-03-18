@@ -13,13 +13,12 @@ function isSelectable(item) {
 }
 export default async (options) => {
     const answer = await createPrompt((config, done) => {
-        const { choices: items, loop = true, pageSize = 10, actions, prefix: initPrefix, actionMsg, sufix = chalk.gray("Press <ESC> to return"), } = config;
+        const { choices: items, loop = true, pageSize = 12, actions, prefix: initPrefix, actionMsg, sufix = chalk.gray("Press <ESC> to return"), } = config;
         const styledActionMessage = actionMsg ? chalk.underline.italic(actionMsg) : "";
         const firstRender = useRef(true);
         const theme = makeTheme(selectTheme, config.theme);
-        const prefix = (initPrefix || "") + usePrefix({ theme }) + " ";
-        const [status, setStatus] = useState("pending");
         const { isSeparator } = Separator;
+        const prefix = (initPrefix || "") + usePrefix({ theme }) + " ";
         const bounds = useMemo(() => {
             const first = items.findIndex(isSelectable);
             const last = items.length - 1 - [...items].reverse().findIndex(isSelectable);
@@ -36,7 +35,6 @@ export default async (options) => {
         const selectedChoice = items[active];
         useKeypress(async (key, _rl) => {
             if (isEnterKey(key)) {
-                // setStatus("done");
                 done(selectedChoice.value);
             }
             else if (isUpKey(key) ||
@@ -66,15 +64,13 @@ export default async (options) => {
                 }
             }
             else if (key.name === "escape") {
-                done(null);
-                // setStatus("done");
+                done("EVENT_INTERRUPTED");
             }
             else {
-                const keyChoice = actions?.find((x) => !isSeparator(x) && x.key === key.name);
-                if (keyChoice && !isSeparator(keyChoice)) {
-                    keyChoice;
-                    // setStatus("done");
-                    done(keyChoice.value);
+                if (actions && actions.length > 0) {
+                    const keyChoice = actions.find((x) => x.key === key.name);
+                    if (keyChoice)
+                        done(keyChoice.value);
                 }
             }
         });
@@ -104,29 +100,32 @@ export default async (options) => {
             loop,
             theme,
         });
-        if (status === "done") {
-            const answer = selectedChoice.name || String(selectedChoice.value);
-            return `${prefix} ${message} ${theme.style.answer(answer)}`;
-        }
-        // page = page.split("(Use arrow keys to reveal more choices)")[0];
         const keyActions = actions && actions?.length > 0
             ? actions
-                ?.map((action, id) => !isSeparator(action)
-                ? `${action.name} ${chalk.blueBright("[" + action.key + "]")}`
-                : action.separator)
+                ?.map((action) => `${action.name} ${chalk.blueBright("[" + action.key + "]")}`)
                 .join("\n")
             : "";
         const keyActionOutput = [styledActionMessage, keyActions].filter(Boolean).join("\n\n");
-        const choiceDescription = selectedChoice.description
-            ? `\n${selectedChoice.description}`
-            : ``;
+        const choiceDescription = selectedChoice.description ? `${selectedChoice.description}` : "";
         const separator = new Separator(process.stdout.columns).separator;
-        const lheader = [prefix, message].filter(Boolean).join("");
+        const lheader = prefix + message;
+        const length = process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix);
         const header = lheader +
-            " ".repeat(process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix)) +
+            " ".repeat(length >= 0 ? length : process.stdout.columns - stringWidth(sufix)
+            // Math.abs(process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix))
+            ) +
             chalk.gray(sufix);
-        return `${header}\n${separator}\n${page}${choiceDescription}\n${separator}\n${keyActionOutput}\n
-      ${ansiEscapes.cursorHide}`;
+        return [
+            header,
+            separator,
+            page,
+            choiceDescription,
+            separator,
+            keyActionOutput,
+            ansiEscapes.cursorHide,
+        ]
+            .filter(Boolean)
+            .join("\n");
     })(options);
     return answer;
 };

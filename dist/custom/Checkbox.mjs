@@ -3,6 +3,7 @@ import chalk from "chalk";
 import figures from "figures";
 import ansiEscapes from "ansi-escapes";
 import { Separator as CustomSeparator } from "./Separator.mjs";
+import { notify } from "../utils/utils.js";
 const checkboxTheme = {
     icon: {
         checked: chalk.green(figures.circleFilled),
@@ -29,7 +30,7 @@ function check(checked) {
     };
 }
 export default createPrompt((config, done) => {
-    const { instructions, pageSize = 7, loop = true, choices, required, validate = () => true, } = config;
+    const { instructions, pageSize = 10, loop = true, choices, required, validate = () => true, } = config;
     const theme = makeTheme(checkboxTheme, config.theme);
     const prefix = usePrefix({ theme });
     const [status, setStatus] = useState("pending");
@@ -51,7 +52,10 @@ export default createPrompt((config, done) => {
             const selection = items.filter(isChecked);
             const isValid = await validate([...selection]);
             if (required && !items.some(isChecked)) {
-                setError("At least one choice must be selected");
+                // setError("At least one choice must be selected");
+                await notify(chalk.redBright("At least one choice must be selected"));
+                // @ts-ignore
+                done(null);
             }
             else if (isValid === true) {
                 setStatus("done");

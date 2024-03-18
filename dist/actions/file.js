@@ -4,17 +4,8 @@ import { googleDrive, questions } from "../config/config.js";
 import { processMainActions } from "../index.js";
 import open from "open";
 import { isExtensionValid } from "../utils/utils.js";
-const { selected_item, rename, input_path, confirm } = questions;
-export const deleteGdriveItem = async (id) => {
-    try {
-        const p = await confirm("Are you sure?");
-        if (p)
-            await googleDrive.deleteItem(id);
-    }
-    catch (error) {
-        console.log(error);
-    }
-};
+import path from "path";
+const { selected_item, rename, input_path, areYouSure } = questions;
 export const processSelectedFile = async (file, folder) => {
     try {
         let { id, name, mimeType } = file;
@@ -25,44 +16,47 @@ export const processSelectedFile = async (file, folder) => {
         };
         switch (fileAnswer) {
             case "DELETE":
-                // await processDeleteActions(name!, id!);
-                await deleteGdriveItem(id);
+                const proceed = await areYouSure("Are you sure?");
+                if (proceed)
+                    await googleDrive.deleteItem(id);
                 break;
             case "TRASH":
+                const proceed1 = await areYouSure("Are you sure?");
+                if (proceed1)
+                    await googleDrive.moveToTrash(id);
                 break;
             case "RENAME":
                 const newName = await rename(name);
                 await googleDrive.rename(newName, id);
-                file.name = newName;
-                folder ? await processFolderActions(folder.name) : await processMainActions();
+                folder ? await processFolderActions(folder.id) : await processMainActions();
                 break;
             case "INFO":
+                // console.clear();
                 await googleDrive.printFileInfo(id);
-                const choice = await confirm("Go back?");
-                if (choice)
-                    await processSelectedFile(file, folder);
+                await questions.pressKeyToContinue();
+                await processSelectedFile(file, folder);
                 break;
             case "DOWNLOAD":
-                let path = await input_path("Provide a destination where to store file: ");
-                if (path) {
-                    const hasFileExtension = isExtensionValid(path);
-                    if (!existsSync(path)) {
-                        console.log("File path is invalid. Please check if you have entered the correct file path.");
+                let newPath = await input_path("Provide a destination where to store file: ");
+                if (newPath) {
+                    const hasFileExtension = isExtensionValid(newPath);
+                    if (!existsSync(newPath)) {
+                        console.log("File newPath is invalid. Please check if you have entered the correct file path.");
                         await backFunc(file);
                         return;
                     }
-                    if (!path.endsWith("/"))
-                        path += "/";
+                    if (!newPath.endsWith(path.sep))
+                        newPath += path.sep;
                     if (name && hasFileExtension) {
-                        path = path + name;
+                        newPath += name;
                     }
                     else {
-                        const suffix = "." + mimeType?.split("/")[1];
-                        path += name + suffix;
+                        const suffix = "." + mimeType?.split(path.sep)[1];
+                        newPath += name + suffix;
                     }
-                    await googleDrive.downloadFile(path, id);
+                    await googleDrive.downloadFile(newPath, id);
                 }
-                folder ? await processFolderActions(folder.name) : await processMainActions();
+                folder ? await processFolderActions(folder.id) : await processMainActions();
                 break;
             case "OPEN":
                 await open(`https://drive.google.com/file/d/${id}/view`);
@@ -78,13 +72,11 @@ export const processSelectedFile = async (file, folder) => {
             //     const selectedFolderId = await googleDrive.getFolderIdWithName(selectedFolder);
             //     await googleDrive.moveFile(id, selectedFolderId);
             //   }
-            //   await backFunc(file);
-            //   break;
         }
     }
     catch (error) {
         if (folder) {
-            await processFolderActions(folder.name);
+            await processFolderActions(folder.id);
         }
         else {
             await processMainActions();

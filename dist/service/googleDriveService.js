@@ -36,7 +36,7 @@ export class GoogleDriveService {
                 access_type: "offline",
                 scope: ["https://www.googleapis.com/auth/drive"],
             });
-            console.log("Visit this URL, and copy Authorization code: \n", authUrl);
+            console.log("Visit this URL, and copy Authorization code:\n", authUrl);
             const code = readline.question("Paste authorization code here: ");
             const { tokens } = await this.oauth2Client.getToken(code);
             await writeFile("./token.json", JSON.stringify(tokens));
@@ -49,36 +49,29 @@ export class GoogleDriveService {
             fields: "files(id, name, mimeType)",
         });
         const folders = res.data.files;
-        if (folders && folders?.length > 0) {
-            return folders.map((x) => x.name && { name: x.name, value: x.name, mimeType: x.mimeType, id: x.id });
-        }
-        else {
-            return [];
-        }
+        return folders.length
+            ? folders?.map((x) => ({ name: x.name, value: x.name, mimeType: x.mimeType, id: x.id }))
+            : [];
     }
     async getRootFolders() {
         const res = await this.drive_client.files.list({
             q: "mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false",
-            fields: "files(id, name)",
+            fields: "files(id, name, mimeType)",
         });
         const folders = res.data.files;
-        if (folders && folders?.length > 0) {
-            return folders.map((x) => x.name && { name: x.name, value: x.name });
-        }
-        else {
-            return [];
-        }
+        return folders.length > 0
+            ? folders.map((x) => ({ name: x.name, value: x.name, mimeType: x.mimeType, id: x.id }))
+            : [];
     }
     async getFolderItems(folderId) {
         try {
             const res = await this.drive_client.files.list({
                 q: `'${folderId}' in parents and trashed=false`,
-                fields: "files(id, name, mimeType, size)",
+                fields: "files(id, name, mimeType)",
             });
             return (res.data.files || []);
         }
         catch (error) {
-            console.log(error);
             return [];
         }
     }
@@ -99,19 +92,22 @@ export class GoogleDriveService {
             throw new Error("Error at fileExists");
         }
     }
-    async getFolderIdWithName(folderName) {
+    async getFolderIdWithName(name, parentId) {
         try {
-            const response = await this.drive_client.files.list({
-                q: `mimeType='application/vnd.google-apps.folder' and name='${folderName}'`,
+            const res = await this.drive_client.files.list({
+                q: parentId
+                    ? `'${parentId}' in parents and `
+                    : "" + `mimeType='application/vnd.google-apps.folder' and name='${name}'`,
                 fields: "files(id)",
             });
-            const folder = response.data.files?.[0];
+            const files = res.data.files;
+            const folder = files?.[files.length - 1];
             if (folder && folder.id) {
                 return folder.id;
             }
             else {
-                console.log(`No folder found with name ${folderName}, creating it...`);
-                const id = await this.createFolder(folderName);
+                console.log(`No folder found with name ${name}, creating it...`);
+                const id = await this.createFolder(name);
                 return id;
             }
         }
@@ -120,8 +116,22 @@ export class GoogleDriveService {
             throw new Error(`Error searching for folder: ${err}`);
         }
     }
+    async recoverTrashItem(fileId) {
+        try {
+            await this.drive_client.files.update({
+                fileId,
+                requestBody: { trashed: false },
+            });
+        }
+        catch (err) {
+            console.log(err);
+        }
+    }
     async getFolderNameWithId(id) {
         const res = await this.drive_client.files.get({ fileId: id, fields: "name" });
+        if (!res.data.name) {
+            throw new Error("Error while getting the name of the items: " + id);
+        }
         return res.data.name;
     }
     async getAllFolders() {
@@ -201,10 +211,10 @@ export class GoogleDriveService {
             throw new Error(`Error while renaming a folder: ${error}`);
         }
     }
-    async deleteItem(folderId) {
+    async deleteItem(fileId) {
         try {
             await this.drive_client.files.delete({
-                fileId: folderId,
+                fileId,
             });
         }
         catch (error) {
@@ -226,8 +236,6 @@ export class GoogleDriveService {
     }
     async uploadSingleFile(name, stream, mimeType, folderId) {
         try {
-            // const name = mimeType ? parseFileExtension(file_name, mimeType) : file_name;
-            // const exists = await this.fileExists(folderId, file_name); // Avoid duplicats ?
             await this.drive_client.files.create({
                 requestBody: {
                     name,
