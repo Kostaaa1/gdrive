@@ -1,11 +1,17 @@
 import { googleDrive, questions } from "../config/config.js";
 import { processMainActions } from "../index.js";
+import { notify } from "../utils/utils.js";
 
 export const processTrashActions = async () => {
   try {
     const trashItems = await googleDrive.listTrashFiles();
-    const { selectedItems, action } = await questions.trash_questions(trashItems);
 
+    if (trashItems.length === 0) {
+      await notify("Trash is empty!", 1000);
+      await processMainActions();
+    }
+
+    const { selectedItems, action } = await questions.trash_questions(trashItems);
     for (const item of selectedItems) {
       switch (action) {
         case "RECOVER":

@@ -1,6 +1,6 @@
 import axios from "axios";
 import internal, { Readable } from "stream";
-import fs, { readFileSync, readdirSync } from "fs";
+import fs from "fs";
 import mime from "mime";
 import { exec } from "child_process";
 import open from "open";
@@ -296,6 +296,26 @@ export function formatStorageQuotaMessage(storageQuota: StorageQuota) {
   }
 
   return `${usedMessage} of ${limitMessage}`;
+}
+
+export async function getTotalBytesFromPlaylist(url: string) {
+  const response = await axios.get(url);
+  console.log(response.data);
+
+  const playlistText = response.data;
+  // Assuming each line in the playlist starting with "http" is a segment URL
+  const segmentUrls = playlistText.split("\n").filter((line: any) => line.startsWith("http"));
+  let totalBytes = 0;
+  for (const segmentUrl of segmentUrls) {
+    console.log(segmentUrl);
+    const segmentResponse = await fetch(segmentUrl);
+    // @ts-ignore
+    const segmentSize = parseInt(segmentResponse.headers.get("content-length"));
+    if (!isNaN(segmentSize)) {
+      totalBytes += segmentSize;
+    }
+  }
+  return totalBytes;
 }
 
 export function isGdriveFolder(type: string) {

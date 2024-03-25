@@ -1,4 +1,13 @@
+import { Readable } from "stream";
+
 export type TFile = { name: string; id: string; value: string; mimeType: string };
+export type TUploadFile = {
+  name: string;
+  stream: Readable;
+  fileSize?: string;
+  mimeType?: string;
+  parentId?: string;
+};
 
 export type MainActions =
   | "ITEM_OPERATIONS"
@@ -17,7 +26,9 @@ export type FolderActions =
   | "TRASH"
   | "RENAME"
   | "ITEM_OPERATIONS"
+  | "NEXT_PAGE"
   | "CREATE";
+
 export type FileActions = "DOWNLOAD" | "RENAME" | "INFO" | "DELETE" | "TRASH" | "OPEN";
 export type ItemOperations = "DELETE" | "TRASH" | "DOWNLOAD";
 

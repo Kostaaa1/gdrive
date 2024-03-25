@@ -2,8 +2,10 @@ import { createWriteStream, readFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { drive_v3, google } from "googleapis";
 import readline from "readline-sync";
-import { convertBytes, formatDate, formatStorageQuotaMessage } from "../utils/utils.js";
-import { TFile } from "../types/types.js";
+import { convertBytes, formatDate, formatStorageQuotaMessage, stop } from "../utils/utils.js";
+import { TFile, TUploadFile } from "../types/types.js";
+import { PassThrough, Readable } from "stream";
+import { error } from "console";
 
 const {
   GOOGLE_CLIENT_ID = "",
@@ -87,28 +89,35 @@ export class GoogleDriveService {
       : [];
   }
 
-  public async getFolderItems(folderId: string): Promise<TFile[]> {
-    try {
-      const res = await this.drive_client.files.list({
-        q: `'${folderId}' in parents and trashed=false`,
-        fields: "files(id, name, mimeType)",
-      });
-      return (res.data.files || []) as TFile[];
-    } catch (error) {
-      return [];
-    }
+  public async getFolderItems(
+    folderId: string,
+    pageToken?: string,
+    pageSize: number = 300
+  ): Promise<{ files: TFile[]; nextPageToken: string | null | undefined }> {
+    const res = await this.drive_client.files.list({
+      q: `'${folderId}' in parents and trashed=false`,
+      fields: "nextPageToken,files(id, name, mimeType)",
+      orderBy: "name",
+      pageSize,
+      pageToken,
+    });
+
+    const nextPageToken = res.data.nextPageToken;
+    const files = res.data.files;
+
+    return { files: files as TFile[], nextPageToken };
   }
 
-  private async getFileCountInFolder(folderId: string): Promise<number> {
-    const files = await this.getFolderItems(folderId);
-    return files.length;
+  public async getFileCountInFolder(folderId: string): Promise<number> {
+    const res = await this.getFolderItems(folderId);
+    return res.files.length;
   }
 
   public async fileExists(folderId: string, name: string): Promise<boolean> {
     try {
       const folder = await this.drive_client.files.list({
         q: `'${folderId}' in parents and name='${name}'`,
-        fields: "files(id)",
+        fields: "nextPageToken, files(id)",
       });
       const { files } = folder.data;
       return files!.length > 0;
@@ -122,7 +131,8 @@ export class GoogleDriveService {
       const res = await this.drive_client.files.list({
         q: parentId
           ? `'${parentId}' in parents and `
-          : "" + `mimeType='application/vnd.google-apps.folder' and name='${name}'`,
+          : "" +
+            `mimeType='application/vnd.google-apps.folder' and name='${name}' and trashed=false`,
 
         fields: "files(id)",
       });
@@ -271,21 +281,29 @@ export class GoogleDriveService {
     }
   }
 
-  public async uploadSingleFile(name: string, stream: any, mimeType: string, folderId?: string) {
+  public async uploadSingleFile(uploadFile: TUploadFile) {
     try {
-      await this.drive_client.files.create({
-        requestBody: {
-          name,
-          mimeType,
-          parents: folderId ? [folderId] : null,
-        },
-        media: {
-          body: stream,
-          mimeType,
-        },
-      });
+      const { name, stream, fileSize, parentId, mimeType } = uploadFile;
+      if (stream.readableLength > 0) {
+        this.drive_client.files
+          .create({
+            requestBody: {
+              name,
+              mimeType,
+              parents: parentId ? [parentId] : null,
+            },
+            media: {
+              body: stream,
+              mimeType,
+            },
+          })
+          .then(() => console.log("Upload succesfull"))
+          .catch(async (err) => {
+            console.log("DKSKADKOSAKOD", err);
+          });
+      }
     } catch (error) {
-      console.error(error);
+      console.log("Error while uploading to google drive", error);
     }
   }
 

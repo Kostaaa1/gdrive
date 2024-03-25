@@ -10,19 +10,15 @@ const { delete_questions, areYouSure, folder_questions, input } = questions;
 export const processFolderActions = async (currentId: string, parentId?: string) => {
   const folderName = await googleDrive.getFolderNameWithId(currentId);
   try {
-    const files = await googleDrive.getFolderItems(currentId);
-    const res = await folder_questions(files, folderName);
+    const { files, nextPageToken } = await googleDrive.getFolderItems(currentId);
+    const answer = await folder_questions(files, folderName);
     let proceed: boolean = false;
-    // const res = repeatData?.action || (await folder_questions(files, folderName));
-    switch (res) {
+
+    switch (answer) {
       case "RENAME":
         const new_name = await input(`Rename folder ${chalk.blueBright(folderName)}: `);
         await googleDrive.rename(new_name, currentId);
         await processFolderActions(currentId, parentId);
-        // try {
-        // } catch (error) {
-        //   await processFolderActions(folderName);
-        // }
         break;
       case "CREATE":
         const newName = await input("Enter new folder name: ");
@@ -48,11 +44,11 @@ export const processFolderActions = async (currentId: string, parentId?: string)
         await processFolderActions(currentId, parentId);
         break;
       default:
-        if (typeof res !== "string") {
-          const { id, mimeType } = res;
+        if (typeof answer !== "string") {
+          const { id, mimeType } = answer;
           isGdriveFolder(mimeType)
             ? await processFolderActions(id, currentId)
-            : await processSelectedFile(res, { id: currentId, name: folderName });
+            : await processSelectedFile(answer, { id: currentId, name: folderName });
         }
         break;
     }

@@ -23,10 +23,12 @@ export const processSelectedFile = async (file: TFile, folder?: { name: string; 
       case "DELETE":
         const proceed = await areYouSure("Are you sure?");
         if (proceed) await googleDrive.deleteItem(id);
+        folder ? await processFolderActions(folder.id) : await processMainActions();
         break;
       case "TRASH":
         const proceed1 = await areYouSure("Are you sure?");
         if (proceed1) await googleDrive.moveToTrash(id);
+        folder ? await processFolderActions(folder.id) : await processMainActions();
         break;
       case "RENAME":
         const newName = await rename(name);

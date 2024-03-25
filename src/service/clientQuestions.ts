@@ -18,7 +18,6 @@ import { existsSync } from "fs";
 import checkboxPrompt from "../custom/Checkbox.mjs";
 import inquirerPressToContinue from "inquirer-press-to-continue";
 import type { KeyDescriptor } from "inquirer-press-to-continue";
-import ora from "ora";
 
 inquirer.registerPrompt("path", PathPrompt);
 inquirer.registerPrompt("press-to-continue", inquirerPressToContinue);
@@ -200,6 +199,7 @@ export class ClientQuestions {
         ],
         actionMsg: `Folder actions:`,
         actions: [
+          // { name: "Go to next page", value: "NEXT_PAGE", key: "a" },
           { name: "Upload from your device", value: "UPLOAD", key: "u" },
           { name: "Rename Folder", value: "RENAME", key: "r" },
           { name: "Operate with items", value: "ITEM_OPERATIONS", key: "o" },
@@ -237,17 +237,35 @@ export class ClientQuestions {
     const answer = await interactiveList<FileActions>({
       message: `Choose file operation for ${chalk.blueBright.underline(folder_content)}: `,
       choices: [
-        { name: "Rename", value: "RENAME" },
+        { name: "Rename", value: "RENAME", description: "Change the name of the file." },
         {
-          name: "Delete/Trash",
+          name: "Delete",
           value: "DELETE",
+          description: "Deletes the file forever.",
+        },
+        {
+          name: "Trash",
+          value: "TRASH",
+          description:
+            "Moves the file to the trash. You will be able to recover it in the next 30 days.",
         },
         {
           name: "Download",
           value: "DOWNLOAD",
+          description:
+            "Download the file, you will be asked to provide the path where you want to store it.",
         },
-        { name: "Open file in browser", value: "OPEN" },
-        { name: "Information about file", value: "INFO" },
+        {
+          name: "Open file in browser",
+          value: "OPEN",
+          description: "Opens the file in your default set browser.",
+        },
+        {
+          name: "Information about file",
+          value: "INFO",
+          description:
+            "Information about file. Such as size, name, id, mimeType, date of file creation",
+        },
       ],
     });
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);

@@ -55,7 +55,11 @@ type Choice<Value> = {
   type?: never;
 };
 
-type KeyChoice<KeyValue> = Choice<KeyValue> & { key: string };
+type KeyChoice<KeyValue> = {
+  value: KeyValue;
+  key: string;
+  name: string;
+};
 
 type SelectConfig<Value, KeyValue> = {
   message: string;
@@ -195,7 +199,9 @@ export default async <Value, KeyValue = never>(
           : "";
 
       const keyActionOutput = [styledActionMessage, keyActions].filter(Boolean).join("\n\n");
-      const choiceDescription = selectedChoice.description ? `${selectedChoice.description}` : "";
+      const choiceDescription = selectedChoice.description
+        ? `\n${chalk.gray(`${selectedChoice.description}`)}`
+        : "";
 
       const separator = new Separator(process.stdout.columns).separator;
 

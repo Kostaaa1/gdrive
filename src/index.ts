@@ -1,6 +1,15 @@
 import "dotenv/config";
 import { googleDrive, questions } from "./config/config.js";
-import { createFolder, parsePathName, isGdriveFolder, openFile } from "./utils/utils.js";
+import {
+  createFolder,
+  parsePathName,
+  isGdriveFolder,
+  openFile,
+  convertBytes,
+  convertPathToStream,
+  convertUrlToStream,
+  stop,
+} from "./utils/utils.js";
 import { processFolderActions } from "./actions/folder.js";
 import { processSelectedFile } from "./actions/file.js";
 import { processTrashActions } from "./actions/trash.js";
@@ -9,15 +18,25 @@ import path from "path";
 import { TFile } from "./types/types.js";
 import { SingleBar } from "cli-progress";
 import { processUploadFromPath } from "./actions/upload.js";
+import fs from "fs";
+import { stat, rm } from "fs/promises";
+// import twitch from "twitch-m3u8";
+import axios from "axios";
+import { KICK_URLS } from "./constants.js";
+import { PassThrough, Readable } from "stream";
+import { spawn } from "child_process";
+import ffmpeg from "fluent-ffmpeg";
+// @ts-ignore
+import { scrapeImages } from "../../Igraliste/puppeteer/index.js";
 
 const { checkbox, areYouSure, item_operation, input_path, input } = questions;
-
 const downloadDriveFiles = async (item: TFile, folderPath: string) => {
   if (isGdriveFolder(item.mimeType)) {
-    const items = await googleDrive.getFolderItems(item.id);
+    const { files } = await googleDrive.getFolderItems(item.id);
     const newPath = await createFolder(path.join(folderPath, item.name));
-    for (let i = 0; i < items.length; i++) {
-      const file = items[i];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       await downloadDriveFiles(file, newPath);
     }
   } else {
@@ -36,6 +55,16 @@ export const processMultipleItems = async (items: TFile[], parentId?: string) =>
       cpath = await input_path("Provide a path where to store the items: ");
     }
 
+    const proceedMsgs: { [key in "TRASH" | "DELETE"]: string } = {
+      DELETE: "Confirm deletion of items?",
+      TRASH: "Confirm moving items to trash?",
+    };
+
+    let proceed: boolean = false;
+    if (operation !== "DOWNLOAD") {
+      proceed = await areYouSure(proceedMsgs[operation]);
+    }
+
     const progressBar = new SingleBar({
       format: "Progress [{bar}] {percentage}% | ETA: {eta}s | {value}/{total}",
     });
@@ -47,7 +76,6 @@ export const processMultipleItems = async (items: TFile[], parentId?: string) =>
       const item = selected[i];
       switch (operation) {
         case "DELETE":
-          const proceed = await areYouSure("Confirm delete?");
           if (proceed) await googleDrive.deleteItem(item.id);
           break;
         case "TRASH":
@@ -116,5 +144,60 @@ export const processMainActions = async () => {
 };
 
 (async () => {
+  await googleDrive.authorize();
   await processMainActions();
+
+  // const folderId = await googleDrive.getFolderIdWithName("hyoon");
+  // const items = await googleDrive.getFolderItems(folderId);
+  // console.log(items);
+
+  // const data = await googleDrive.getFileCountInFolder(folderId);
+  // console.log(data);
+
+  // const url = "https://fapello.com/hyoon/";
+  // const url = await input("Provide url to scrape: ");
+  // const data: { name: string; sources: { name: string; url: string }[] } = await scrapeImages(
+  //   url
+  // );
+  // console.log(data, data.sources.length);
+  // const parentId = await googleDrive.getFolderIdWithName(data.name);
+  // for (const img of data.sources) {
+  //   const { name, url } = img;
+  //   const stream = await convertUrlToStream(url);
+  //   try {
+  //     await googleDrive.uploadSingleFile({ name, stream, parentId });
+  //   } catch (error) {
+  //     console.log("ERROR OCURREDDDDDDDDD", error);
+  //   }
+  // }
+
+  // const twitch = new TwitchDownloader();
+  // const { id, mimeType, stream, username } = await twitch.getUrlReadableStream(url);
+  // const data = await twitch.scrapeVodUrl(url);
+
+  // Working code of converting m3u8 to mpegts format by piping it to passthrough stream, and uplaoding it to google drive
+  // console.time("action");
+  // const url = KICK_URLS.CLIP_URL_2;
+  // const outStream = new PassThrough();
+
+  // ffmpeg(url)
+  //   .outputOptions(["-c copy", "-preset ultrafast", "-movflags +faststart", "-f mpegts"])
+  //   .on("end", async () => {
+  //     console.log("Succesfully converted. Uploading to google drive..");
+  //     console.timeEnd("action");
+  //   })
+  //   .on("progress", (progress) => {
+  //     console.log("Processing: " + progress.percent + "% ");
+  //   })
+  //   .on("error", (error: any) => {
+  //     console.log("Conversion failed..", error);
+  //     outStream.end();
+  //     outStream.destroy();
+  //   })
+  //   .pipe(outStream, { end: true });
+
+  // await googleDrive.uploadSingleFile({
+  //   name: "Erica.mp4",
+  //   stream: outStream,
+  // });
 })();
