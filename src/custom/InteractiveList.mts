@@ -157,7 +157,9 @@ export default async <Value, KeyValue = never>(
         } else {
           if (actions && actions.length > 0) {
             const keyChoice = actions.find((x) => x.key === key.name);
-            if (keyChoice) done(keyChoice.value);
+            if (keyChoice) {
+              done(keyChoice.value);
+            }
           }
         }
       });
@@ -209,10 +211,7 @@ export default async <Value, KeyValue = never>(
       const length = process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix);
       const header =
         lheader +
-        " ".repeat(
-          length >= 0 ? length : process.stdout.columns - stringWidth(sufix)
-          // Math.abs(process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix))
-        ) +
+        " ".repeat(length >= 0 ? length : process.stdout.columns - stringWidth(sufix)) +
         chalk.gray(sufix);
 
       return [

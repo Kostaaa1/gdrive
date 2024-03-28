@@ -1,5 +1,5 @@
 import axios from "axios";
-import internal, { Readable } from "stream";
+import internal, { PassThrough, Readable } from "stream";
 import fs from "fs";
 import mime from "mime";
 import { exec } from "child_process";
@@ -8,6 +8,7 @@ import path from "path";
 import { readdir, access, mkdir } from "fs/promises";
 import chalk from "chalk";
 import { StorageQuota } from "../types/types.js";
+import { SingleBar } from "cli-progress";
 
 export function formatDate(date: string) {
   const formattedDate = new Date(date).toLocaleString("en-US", {
@@ -70,7 +71,7 @@ export const isDirectory = (path: string): Promise<boolean> => {
 
 export function parseFileExtension(name: string, mimeType: string): string {
   const fileExt = mime.getExtension(mimeType);
-  const hasFileExtension = /\.(mp4|jpg|jpeg|png|gif|pdf|docx)$/i.test(name);
+  const hasFileExtension = /\.(mp4|jpg|jpeg|png|webp|gif|pdf|docx)$/i.test(name);
   return !hasFileExtension ? `${name}.${fileExt}` : name;
 }
 
@@ -174,9 +175,9 @@ export async function getUrlMimeType(url: string): Promise<string | undefined> {
   }
 }
 
-export async function convertUrlToStream(url: string): Promise<internal.PassThrough> {
+export async function convertUrlToStream(url: string): Promise<internal.Readable> {
   const res = await axios.get(url, { responseType: "stream" });
-  return res.data;
+  return res.status === 200 ? res.data : [];
 }
 
 export async function convertPathToStream(filePath: string): Promise<internal.Readable> {
@@ -210,7 +211,7 @@ async function findValidFile(dir: string, base: string) {
 
 export const stop = (ms: number = 500) => new Promise((res) => setTimeout(res, ms));
 
-export const isExtensionValid = (p: string) => {
+export const isExtensionValid = (p: string): Boolean => {
   const extensionRegex = /\.(mp4|jpg|jpeg|png|gif|pdf|wav|mp3|docx)/i;
   return extensionRegex.test(p);
 };
@@ -220,6 +221,19 @@ export const notify = (message: string, ms: number = 500) =>
     console.log(chalk.redBright(message));
     setTimeout(res, ms);
   });
+
+export function extractFileNameFromUrl(url: string) {
+  const urlParts = url.split("/");
+  let fileName = urlParts[urlParts.length - 1];
+  fileName = fileName.split("?")[0];
+  fileName = fileName.split("#")[0];
+  if (!fileName || fileName === "/") {
+    fileName = urlParts[urlParts.length - 2];
+  }
+
+  fileName = decodeURIComponent(fileName);
+  return fileName;
+}
 
 export async function openFile(filePath: string) {
   const dir = path.dirname(filePath);
@@ -268,7 +282,6 @@ export async function openFile(filePath: string) {
 }
 
 export function formatStorageQuotaMessage(storageQuota: StorageQuota) {
-  // const usageBytes = parseInt(storageQuota.usage);
   const limitBytes = parseInt(storageQuota.limit);
   const usageInDriveBytes = parseInt(storageQuota.usageInDrive);
 
@@ -320,4 +333,52 @@ export async function getTotalBytesFromPlaylist(url: string) {
 
 export function isGdriveFolder(type: string) {
   return type === "application/vnd.google-apps.folder";
+}
+
+export function isBase64(str: string) {
+  const prefix = "data:image/";
+  const base64Index = str.indexOf(";base64,");
+
+  if (base64Index === -1 || !str.startsWith(prefix)) {
+    return false;
+  }
+
+  const base64Str = str.slice(base64Index + ";base64,".length);
+  try {
+    const decodedData = atob(base64Str);
+    return true;
+  } catch (error) {
+    console.error("Error:", error);
+    return false;
+  }
+}
+
+export function base64ToStream(base64str: string) {
+  const byteCharacters = atob(base64str);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  const blob = new Blob([byteArray], { type: "image/jpeg" });
+
+  return blob;
+}
+
+export function handleCancelOnKey(cancel: { value: boolean }, cb: () => void) {
+  const { stdin } = process;
+
+  const cancelHandler = (key: any) => {
+    const keyPressed = key.toString();
+    if (keyPressed === "\u001b") {
+      cancel.value = true;
+      console.log("\nCancellation requested. Finishing current operation...");
+      cb();
+      stdin.setRawMode(false);
+      stdin.pause();
+
+      stdin.removeListener("data", cancelHandler);
+    }
+  };
+  stdin.on("data", cancelHandler);
 }

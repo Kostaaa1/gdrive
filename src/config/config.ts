@@ -1,5 +1,5 @@
-import { ClientQuestions } from "../service/clientQuestions.js";
-import { GoogleDriveService } from "../service/googleDriveService.js";
+import { ClientQuestions } from "../service/ClientQuestions.js";
+import { GoogleDriveService } from "../service/GoogleDriveService.js";
 
 const questions = new ClientQuestions();
 const googleDrive = new GoogleDriveService();

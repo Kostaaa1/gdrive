@@ -14,6 +14,11 @@ export const processSelectedFile = async (file: TFile, folder?: { name: string; 
     let { id, name, mimeType } = file;
     const fileAnswer = await selected_item(name);
 
+    // if (!isExtensionValid(name)) {
+    // const ext = mimeType.split("/")[1];
+    // update the name if the name of the uploaded file does not have extension.
+    // }
+
     const backFunc = async (file: TFile) => {
       await processSelectedFile(file, folder);
       return;

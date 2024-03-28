@@ -5,10 +5,10 @@ import {
   parsePathName,
   isGdriveFolder,
   openFile,
-  convertBytes,
-  convertPathToStream,
+  base64ToStream,
+  isBase64,
   convertUrlToStream,
-  stop,
+  extractFileNameFromUrl,
 } from "./utils/utils.js";
 import { processFolderActions } from "./actions/folder.js";
 import { processSelectedFile } from "./actions/file.js";
@@ -16,38 +16,32 @@ import { processTrashActions } from "./actions/trash.js";
 import open from "open";
 import path from "path";
 import { TFile } from "./types/types.js";
-import { SingleBar } from "cli-progress";
-import { processUploadFromPath } from "./actions/upload.js";
-import fs from "fs";
-import { stat, rm } from "fs/promises";
-// import twitch from "twitch-m3u8";
+import { Presets, SingleBar } from "cli-progress";
+import { processUploadActions } from "./actions/upload.js";
+import { Scraper } from "./service/Scraper.js";
+import { Readable } from "stream";
 import axios from "axios";
-import { KICK_URLS } from "./constants.js";
-import { PassThrough, Readable } from "stream";
-import { spawn } from "child_process";
-import ffmpeg from "fluent-ffmpeg";
-// @ts-ignore
-import { scrapeImages } from "../../Igraliste/puppeteer/index.js";
-
 const { checkbox, areYouSure, item_operation, input_path, input } = questions;
-const downloadDriveFiles = async (item: TFile, folderPath: string) => {
-  if (isGdriveFolder(item.mimeType)) {
-    const { files } = await googleDrive.getFolderItems(item.id);
-    const newPath = await createFolder(path.join(folderPath, item.name));
+
+const downloadDriveFiles = async (file: TFile, folderPath: string) => {
+  const { id, mimeType, name, value } = file;
+  if (isGdriveFolder(mimeType)) {
+    const { files } = await googleDrive.getFolderItems(id);
+    const newPath = await createFolder(path.join(folderPath, name));
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       await downloadDriveFiles(file, newPath);
     }
   } else {
-    const pathname = await parsePathName(path.join(folderPath, item.name));
-    await googleDrive.downloadFile(pathname, item.id);
+    const pathname = await parsePathName(path.join(folderPath, name));
+    await googleDrive.downloadFile(pathname, id);
   }
 };
 
-export const processMultipleItems = async (items: TFile[], parentId?: string) => {
+export const processMultipleItems = async (files: TFile[], parentId?: string) => {
   try {
-    const selected = await checkbox("Select items: ", items);
+    const selected = await checkbox("Select file: ", files);
     const operation = await item_operation();
     let cpath: string | undefined = undefined;
 
@@ -65,14 +59,16 @@ export const processMultipleItems = async (items: TFile[], parentId?: string) =>
       proceed = await areYouSure(proceedMsgs[operation]);
     }
 
-    const progressBar = new SingleBar({
-      format: "Progress [{bar}] {percentage}% | ETA: {eta}s | {value}/{total}",
-    });
+    const progressBar = new SingleBar(
+      {
+        format: "Progress [{bar}] {percentage}% | ETA: {eta}s | {value}/{total}",
+      },
+      Presets.rect
+    );
     progressBar.start(selected.length, 0);
 
     for (let i = 0; i < selected.length; i++) {
       progressBar.increment();
-
       const item = selected[i];
       switch (operation) {
         case "DELETE":
@@ -86,11 +82,8 @@ export const processMultipleItems = async (items: TFile[], parentId?: string) =>
           break;
       }
 
-      if (i === selected.length - 1) {
-        progressBar.stop();
-      }
+      if (i === selected.length - 1) progressBar.stop();
     }
-
     parentId ? await processFolderActions(parentId) : await processMainActions();
   } catch (error) {
     parentId ? await processFolderActions(parentId) : await processMainActions();
@@ -100,15 +93,15 @@ export const processMultipleItems = async (items: TFile[], parentId?: string) =>
 export const processMainActions = async () => {
   try {
     const storageSizeMsg = await googleDrive.getDriveStorageSize();
-    const folders = await googleDrive.getRootItems();
-    const answer = await questions.main_questions(folders, storageSizeMsg);
+    const items = await googleDrive.getRootItems();
+    const answer = await questions.main_questions(items, storageSizeMsg);
 
     switch (answer) {
       case "ITEM_OPERATIONS":
-        await processMultipleItems(folders);
+        await processMultipleItems(items);
         break;
       case "UPLOAD":
-        await processUploadFromPath();
+        await processUploadActions();
         await processMainActions();
         break;
       case "CREATE":
@@ -147,13 +140,18 @@ export const processMainActions = async () => {
   await googleDrive.authorize();
   await processMainActions();
 
+  /////////////////////////////////////////
+  // await processUploadActions();
+  // const url =
+  //   "https://www.twitch.tv/mellooow_/clip/CrazyBlueCookiePermaSmug-gOKwhWbVkl7DFo4G?filter=clips&range=30d&sort=time";
+  // const { id, mimeType, stream, username, title } = await twitch.getTwitchVideo(url);
+  // await googleDrive.uploadSingleFile({ name: title, stream, mimeType });
+  // console.log(data);
   // const folderId = await googleDrive.getFolderIdWithName("hyoon");
   // const items = await googleDrive.getFolderItems(folderId);
   // console.log(items);
-
   // const data = await googleDrive.getFileCountInFolder(folderId);
   // console.log(data);
-
   // const url = "https://fapello.com/hyoon/";
   // const url = await input("Provide url to scrape: ");
   // const data: { name: string; sources: { name: string; url: string }[] } = await scrapeImages(
@@ -161,25 +159,15 @@ export const processMainActions = async () => {
   // );
   // console.log(data, data.sources.length);
   // const parentId = await googleDrive.getFolderIdWithName(data.name);
-  // for (const img of data.sources) {
-  //   const { name, url } = img;
-  //   const stream = await convertUrlToStream(url);
-  //   try {
-  //     await googleDrive.uploadSingleFile({ name, stream, parentId });
-  //   } catch (error) {
-  //     console.log("ERROR OCURREDDDDDDDDD", error);
-  //   }
-  // }
-
+  // const folderName = await questions.input("Name for the new folder: ");
   // const twitch = new TwitchDownloader();
   // const { id, mimeType, stream, username } = await twitch.getUrlReadableStream(url);
   // const data = await twitch.scrapeVodUrl(url);
-
+  ///////////////////////////////////
   // Working code of converting m3u8 to mpegts format by piping it to passthrough stream, and uplaoding it to google drive
   // console.time("action");
   // const url = KICK_URLS.CLIP_URL_2;
   // const outStream = new PassThrough();
-
   // ffmpeg(url)
   //   .outputOptions(["-c copy", "-preset ultrafast", "-movflags +faststart", "-f mpegts"])
   //   .on("end", async () => {
@@ -195,7 +183,6 @@ export const processMainActions = async () => {
   //     outStream.destroy();
   //   })
   //   .pipe(outStream, { end: true });
-
   // await googleDrive.uploadSingleFile({
   //   name: "Erica.mp4",
   //   stream: outStream,

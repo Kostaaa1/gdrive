@@ -3,14 +3,14 @@ import { isGdriveFolder } from "../utils/utils.js";
 import { googleDrive, questions } from "../config/config.js";
 import { processMainActions, processMultipleItems } from "../index.js";
 import { processSelectedFile } from "./file.js";
-import { processUploadFromPath } from "./upload.js";
+import { processUploadActions } from "./upload.js";
 
 const { delete_questions, areYouSure, folder_questions, input } = questions;
 
 export const processFolderActions = async (currentId: string, parentId?: string) => {
   const folderName = await googleDrive.getFolderNameWithId(currentId);
   try {
-    const { files, nextPageToken } = await googleDrive.getFolderItems(currentId);
+    const { files } = await googleDrive.getFolderItems(currentId);
     const answer = await folder_questions(files, folderName);
     let proceed: boolean = false;
 
@@ -26,9 +26,8 @@ export const processFolderActions = async (currentId: string, parentId?: string)
         await processFolderActions(currentId, parentId);
         break;
       case "UPLOAD":
-        // await processUploadActions(folderId, folderName);
-        await processUploadFromPath({ name: folderName, parentId: currentId });
-        await processFolderActions(currentId, parentId);
+        console.log(folderName, currentId);
+        await processUploadActions({ name: folderName, parentId: currentId });
         break;
       case "ITEM_OPERATIONS":
         await processMultipleItems(files, folderName);

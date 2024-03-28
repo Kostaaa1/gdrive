@@ -29,8 +29,11 @@ export type FolderActions =
   | "NEXT_PAGE"
   | "CREATE";
 
+export type UploadActions = "PATH" | "SCRAPE" | "URL";
+
 export type FileActions = "DOWNLOAD" | "RENAME" | "INFO" | "DELETE" | "TRASH" | "OPEN";
 export type ItemOperations = "DELETE" | "TRASH" | "DOWNLOAD";
+export type ScrapingOpts = "VIDEOS" | "IMAGES";
 
 export type DeleteOpts = "DELETE" | "TRASH";
 // export type UploadOpts = "FOLDER" | "FILE";

@@ -4,8 +4,10 @@ import {
   FolderActions,
   ItemOperations,
   MainActions,
+  ScrapingOpts,
   TFile,
   TrashActions,
+  UploadActions,
 } from "../types/types.js";
 import chalk from "chalk";
 import inquirer from "inquirer";
@@ -25,7 +27,6 @@ InterruptedPrompt.fromAll(inquirer);
 
 export class ClientQuestions {
   public async input_path(message: string): Promise<string> {
-    // if (clearConsole) console.clear();
     const { path } = await inquirer.prompt([
       { type: "path", name: "path", message, default: process.cwd() },
     ]);
@@ -118,6 +119,31 @@ export class ClientQuestions {
     return { selectedItems: selected, action };
   }
 
+  public async upload_questions(): Promise<UploadActions> {
+    console.clear();
+    const answer = await interactiveList<UploadActions>({
+      message: "Your root folder/files: ",
+      choices: [
+        {
+          name: "Upload from local machine",
+          value: "PATH",
+          description: "Provide the path to the folder/file that you want to upload",
+        },
+        {
+          name: "Upload from url",
+          value: "URL",
+          description: "Upload from the url. Such as pdf documents, images, videos.",
+        },
+        {
+          name: "Scrape the webpage via url",
+          value: "SCRAPE",
+          description: "Scrape content from webpage, such as images, videos, pdfs",
+        },
+      ],
+    });
+    if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
+    return answer;
+  }
   public async main_questions(
     items: TFile[],
     storageSizeMsg: string | undefined
@@ -135,7 +161,7 @@ export class ClientQuestions {
       actions: [
         { name: "Manage Trash", value: "TRASH", key: "t" },
         {
-          name: "Upload from your device",
+          name: "Upload from your machine or from other sources",
           value: "UPLOAD",
           key: "u",
         },
@@ -199,8 +225,11 @@ export class ClientQuestions {
         ],
         actionMsg: `Folder actions:`,
         actions: [
-          // { name: "Go to next page", value: "NEXT_PAGE", key: "a" },
-          { name: "Upload from your device", value: "UPLOAD", key: "u" },
+          {
+            name: "Upload from your machine or from other sources",
+            value: "UPLOAD",
+            key: "u",
+          },
           { name: "Rename Folder", value: "RENAME", key: "r" },
           { name: "Operate with items", value: "ITEM_OPERATIONS", key: "o" },
           { name: "Delete folder", value: "DELETE", key: "d" },
@@ -299,5 +328,48 @@ export class ClientQuestions {
     });
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
     return answer;
+  }
+
+  public async scraping_questions(): Promise<{
+    url: string;
+    name: string;
+    duration: number;
+    type: ScrapingOpts;
+  }> {
+    const { url } = await inquirer.prompt({
+      message: "Enter the URL of the webpage you want to scrape: ",
+      name: "url",
+      type: "input",
+    });
+    const { name } = await inquirer.prompt({
+      message: "The name for new folder: ",
+      name: "name",
+      type: "input",
+    });
+    const { duration } = await inquirer.prompt({
+      message: `Enter the duration of the scraping action ${chalk.gray(
+        "(in seconds, recommended 5-15 seconds)"
+      )}: `,
+      name: "duration",
+      type: "input",
+      default: () => {},
+      validate: (input: any) => {
+        if (!isNaN(input)) {
+          return true;
+        } else {
+          console.log(`\n${chalk.red("Incorrect input. Please provide a number")}`);
+          return false;
+        }
+      },
+    });
+    const type = await interactiveList<ScrapingOpts>({
+      message: "Pick media to scrape: ",
+      choices: [
+        { name: "Videos", value: "VIDEOS" },
+        { name: "Images", value: "IMAGES" },
+      ],
+    });
+    if (type === "EVENT_INTERRUPTED") throw new Error(type);
+    return { url, duration: duration * 1000, name, type };
   }
 }
