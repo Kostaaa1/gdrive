@@ -1,10 +1,10 @@
-import { googleDrive, questions } from "../config/config.js";
+import { gdrive, questions } from "../config/config.js";
 import { processMainActions } from "../index.js";
 import { notify } from "../utils/utils.js";
 
 export const processTrashActions = async () => {
   try {
-    const trashItems = await googleDrive.listTrashFiles();
+    const trashItems = await gdrive.listTrashFiles();
     if (trashItems.length === 0) {
       await notify("Trash is empty!", 500);
       await processMainActions();
@@ -12,15 +12,15 @@ export const processTrashActions = async () => {
 
     const { selectedItems, action } = await questions.trash_questions(trashItems);
     if (selectedItems.length === trashItems.length) {
-      if (action === "DELETE") await googleDrive.emptyTrash();
+      if (action === "DELETE") await gdrive.emptyTrash();
     } else {
       for (const item of selectedItems) {
         switch (action) {
           case "RECOVER":
-            await googleDrive.recoverTrashItem(item.id);
+            await gdrive.recoverTrashItem(item.id);
             break;
           case "DELETE":
-            await googleDrive.deleteItem(item.id);
+            await gdrive.deleteItem(item.id);
             break;
         }
       }

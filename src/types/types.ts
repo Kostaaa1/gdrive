@@ -1,6 +1,7 @@
 import { Readable } from "stream";
 
 export type TFile = { name: string; id: string; value: string; mimeType: string };
+export type TFolder = { name: string; id: string; path: string };
 export type TUploadFile = {
   name: string;
   stream: Readable;
@@ -26,13 +27,14 @@ export type FolderActions =
   | "TRASH"
   | "RENAME"
   | "ITEM_OPERATIONS"
-  | "NEXT_PAGE"
+  | "DOWNLOAD"
+  | "MOVE"
   | "CREATE";
 
 export type UploadActions = "PATH" | "SCRAPE" | "URL";
 
 export type FileActions = "DOWNLOAD" | "RENAME" | "INFO" | "DELETE" | "TRASH" | "OPEN";
-export type ItemOperations = "DELETE" | "TRASH" | "DOWNLOAD";
+export type ItemOperations = "DELETE" | "TRASH" | "DOWNLOAD" | "MOVE";
 export type ScrapingOpts = "VIDEOS" | "IMAGES";
 
 export type DeleteOpts = "DELETE" | "TRASH";

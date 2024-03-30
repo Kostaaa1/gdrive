@@ -1,5 +1,5 @@
 import axios from "axios";
-import internal, { PassThrough, Readable } from "stream";
+import internal, { Readable } from "stream";
 import fs from "fs";
 import mime from "mime";
 import { exec } from "child_process";
@@ -7,8 +7,8 @@ import open from "open";
 import path from "path";
 import { readdir, access, mkdir } from "fs/promises";
 import chalk from "chalk";
+import { Presets, SingleBar } from "cli-progress";
 import { StorageQuota } from "../types/types.js";
-import { SingleBar } from "cli-progress";
 
 export function formatDate(date: string) {
   const formattedDate = new Date(date).toLocaleString("en-US", {
@@ -140,25 +140,6 @@ export async function createFolder(folderPath: string): Promise<string> {
     throw new Error("Error while creating a folder.");
   }
 }
-
-// export function getMimeType(filePath: string): string | null {
-//   try {
-//     const lastSlashIndex = filePath.lastIndexOf(path.sep);
-//     const dest = filePath.slice(0, lastSlashIndex);
-//     const fileName = filePath.slice(lastSlashIndex + 1);
-//     // const dest = path.dirname(filePath)
-//     // const fileName = path.basename(filePath)
-//     if (fs.existsSync(dest)) {
-//       const files = readdirSync(dest);
-//       return files.includes(fileName) ? mime.getType(filePath) : null;
-//     } else {
-//       return null;
-//     }
-//   } catch (err) {
-//     console.error(err);
-//     return null;
-//   }
-// }
 
 export function getMimeType(filePath: string): string | null {
   return fs.existsSync(filePath) ? mime.getType(filePath) : null;
@@ -372,7 +353,7 @@ export function handleCancelOnKey(cancel: { value: boolean }, cb: () => void) {
     const keyPressed = key.toString();
     if (keyPressed === "\u001b") {
       cancel.value = true;
-      console.log("\nCancellation requested. Finishing current operation...");
+      console.log("\nProcess terminated, proceeding the action...");
       cb();
       stdin.setRawMode(false);
       stdin.pause();
@@ -381,4 +362,16 @@ export function handleCancelOnKey(cancel: { value: boolean }, cb: () => void) {
     }
   };
   stdin.on("data", cancelHandler);
+}
+
+export function initProgressBar(itemsLength: number, message: string = ""): SingleBar {
+  const msg = `${message} Progress [{bar}] {percentage}% | ETA: {eta}s | {value}/{total}`;
+  const progressBar = new SingleBar(
+    {
+      format: msg,
+    },
+    Presets.rect
+  );
+  progressBar.start(itemsLength, 0);
+  return progressBar;
 }

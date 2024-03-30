@@ -6,6 +6,7 @@ import {
   MainActions,
   ScrapingOpts,
   TFile,
+  TFolder,
   TrashActions,
   UploadActions,
 } from "../types/types.js";
@@ -55,7 +56,7 @@ export class ClientQuestions {
     return bool;
   }
 
-  public async input(message: string) {
+  public async input(message: string): Promise<string> {
     const { answer } = await inquirer.prompt([
       {
         type: "input",
@@ -144,6 +145,7 @@ export class ClientQuestions {
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
     return answer;
   }
+
   public async main_questions(
     items: TFile[],
     storageSizeMsg: string | undefined
@@ -192,7 +194,6 @@ export class ClientQuestions {
         },
       ],
     });
-
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
     return answer;
   }
@@ -217,20 +218,20 @@ export class ClientQuestions {
         message,
         choices: [
           ...files.map((file) => ({
-            name: `${file.name} ${
-              file.mimeType === "application/vnd.google-apps.folder" ? chalk.gray("(folder)") : ""
-            }`,
+            name: `${file.name} ${isGdriveFolder(file.mimeType) ? chalk.gray("(folder)") : ""}`,
             value: file,
           })),
         ],
-        actionMsg: `Folder actions:`,
+        actionMsg: "Folder actions:",
         actions: [
           {
             name: "Upload from your machine or from other sources",
             value: "UPLOAD",
             key: "u",
           },
-          { name: "Rename Folder", value: "RENAME", key: "r" },
+          { name: "Download folder: ", value: "DOWNLOAD", key: "z" },
+          { name: "Move folder: ", value: "MOVE", key: "m" },
+          { name: "Rename folder", value: "RENAME", key: "r" },
           { name: "Operate with items", value: "ITEM_OPERATIONS", key: "o" },
           { name: "Delete folder", value: "DELETE", key: "d" },
           { name: "Move folder to trash", value: "TRASH", key: "t" },
@@ -245,7 +246,10 @@ export class ClientQuestions {
       answer = await interactiveList<FolderActions>({
         message,
         choices: [
-          { name: "Upload from your device", value: "UPLOAD" },
+          {
+            name: "Upload from your machine or from other sources",
+            value: "UPLOAD",
+          },
           { name: "Rename Folder", value: "RENAME" },
           // { name: "Operate with items", value: "ITEM_OPERATIONS" },
           { name: "Delete folder", value: "DELETE" },
@@ -324,6 +328,7 @@ export class ClientQuestions {
         { name: "Delete", value: "DELETE" },
         { name: "Trash", value: "TRASH" },
         { name: "Download", value: "DOWNLOAD" },
+        { name: "Move", value: "MOVE" },
       ],
     });
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
@@ -371,5 +376,29 @@ export class ClientQuestions {
     });
     if (type === "EVENT_INTERRUPTED") throw new Error(type);
     return { url, duration: duration * 1000, name, type };
+  }
+
+  public async move_questions(folders: TFolder[]) {
+    console.clear();
+    const res = await interactiveList({
+      message: "Where do you want to move the item: ",
+      choices: folders.map((x) => ({ ...x, name: x.path, value: x })),
+    });
+    if (res === "EVENT_INTERRUPTED") throw new Error(res);
+    return res;
+  }
+
+  public async batch_item_operation(
+    files: TFile[]
+  ): Promise<{ selected: TFile[]; operation: ItemOperations; cpath?: string }> {
+    const selected = await this.checkbox("Select item: ", files);
+    const operation = await this.item_operation();
+    let cpath: string | undefined = undefined;
+
+    if (operation === "DOWNLOAD") {
+      cpath = await this.input_path("Provide a path where to store the items: ");
+    }
+
+    return { selected, operation, cpath };
   }
 }

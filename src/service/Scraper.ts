@@ -42,7 +42,7 @@ export class Scraper {
     });
 
     await Promise.race([
-      timeoutPromise.then(() => console.log("Time limit exceeded")),
+      timeoutPromise,
       (async () => {
         while (true) {
           await page.evaluate(() => {

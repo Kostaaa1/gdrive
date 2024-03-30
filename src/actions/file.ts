@@ -1,6 +1,6 @@
 import { processFolderActions } from "./folder.js";
 import { existsSync } from "fs";
-import { googleDrive, questions } from "../config/config.js";
+import { gdrive, questions } from "../config/config.js";
 import { processMainActions } from "../index.js";
 import open from "open";
 import { isExtensionValid } from "../utils/utils.js";
@@ -13,12 +13,10 @@ export const processSelectedFile = async (file: TFile, folder?: { name: string; 
   try {
     let { id, name, mimeType } = file;
     const fileAnswer = await selected_item(name);
-
     // if (!isExtensionValid(name)) {
     // const ext = mimeType.split("/")[1];
     // update the name if the name of the uploaded file does not have extension.
     // }
-
     const backFunc = async (file: TFile) => {
       await processSelectedFile(file, folder);
       return;
@@ -27,22 +25,22 @@ export const processSelectedFile = async (file: TFile, folder?: { name: string; 
     switch (fileAnswer) {
       case "DELETE":
         const proceed = await areYouSure("Are you sure?");
-        if (proceed) await googleDrive.deleteItem(id);
-        folder ? await processFolderActions(folder.id) : await processMainActions();
+        if (proceed) await gdrive.deleteItem(id);
+        folder ? await processFolderActions({ id: folder.id }) : await processMainActions();
         break;
       case "TRASH":
         const proceed1 = await areYouSure("Are you sure?");
-        if (proceed1) await googleDrive.moveToTrash(id);
-        folder ? await processFolderActions(folder.id) : await processMainActions();
+        if (proceed1) await gdrive.moveToTrash(id);
+        folder ? await processFolderActions({ id: folder.id }) : await processMainActions();
         break;
       case "RENAME":
         const newName = await rename(name);
-        await googleDrive.rename(newName, id);
-        folder ? await processFolderActions(folder.id) : await processMainActions();
+        await gdrive.rename(newName, id);
+        folder ? await processFolderActions({ id: folder.id }) : await processMainActions();
         break;
       case "INFO":
         // console.clear();
-        await googleDrive.printFileInfo(id);
+        await gdrive.printFileInfo(id);
         await questions.pressKeyToContinue();
         await processSelectedFile(file, folder);
         break;
@@ -64,28 +62,28 @@ export const processSelectedFile = async (file: TFile, folder?: { name: string; 
             const suffix = "." + mimeType?.split(path.sep)[1];
             newPath += name + suffix;
           }
-          await googleDrive.downloadFile(newPath, id);
+          await gdrive.downloadFile(newPath, id);
         }
-        folder ? await processFolderActions(folder.id) : await processMainActions();
+        folder ? await processFolderActions({ id: folder.id }) : await processMainActions();
         break;
       case "OPEN":
         await open(`https://drive.google.com/file/d/${id}/view`);
         await processSelectedFile(file, folder);
         break;
       // case "MOVE":
-      //   const folders = await googleDrive.getRootFolders();
+      //   const folders = await gdrive.getRootFolders();
       //   if (folders.length > 0 && id) {
       //     const message = `Select the folder where you want to move the file: ${chalk.blueBright(
       //       file.name
       //     )}`;
       //     const selectedFolder = await folder_questions_1(folders, message);
-      //     const selectedFolderId = await googleDrive.getFolderIdWithName(selectedFolder);
-      //     await googleDrive.moveFile(id, selectedFolderId);
+      //     const selectedFolderId = await gdrive.getFolderIdWithName(selectedFolder);
+      //     await gdrive.moveFile(id, selectedFolderId);
       //   }
     }
   } catch (error) {
     if (folder) {
-      await processFolderActions(folder.id);
+      await processFolderActions({ id: folder.id });
     } else {
       await processMainActions();
     }

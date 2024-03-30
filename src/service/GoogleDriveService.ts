@@ -3,7 +3,7 @@ import { writeFile } from "fs/promises";
 import { drive_v3, google } from "googleapis";
 import readline from "readline-sync";
 import { convertBytes, formatDate, formatStorageQuotaMessage, stop } from "../utils/utils.js";
-import { TFile, TUploadFile } from "../types/types.js";
+import { TFile, TFolder, TUploadFile } from "../types/types.js";
 
 const {
   GOOGLE_CLIENT_ID = "",
@@ -174,31 +174,31 @@ export class GoogleDriveService {
     return res.data.name;
   }
 
-  // public async getAllFolders() {
-  /////// NEEDS FIX /////////
-  //   const res = await this.drive_client.files.list({
-  //     q: "mimeType='application/vnd.google-apps.folder'",
-  //     fields: "files(id, name, parents)",
-  //   });
-  //   const files = res.data.files;
-  //   const stack: { id: string; name: string; path: string }[] = [];
-  //   for (const file of files!) {
-  //     const parents = file.parents;
-  //     let base: string = "";
-  //     if (!parents) return;
-  //     for (const parentId of parents) {
-  //       const name = await this.getFolderNameWithId(parentId);
-  //       base += "/" + (name === "My Drive" ? "" : name);
-  //     }
-  //     delete file.parents;
-  //     stack.push({
-  //       id: file.id!,
-  //       name: file.name!,
-  //       path: base + (base.endsWith("/") ? file.name : `/${file.name}`),
-  //     });
-  //   }
-  //   return stack;
-  // }
+  public async getDriveFolders(filterId?: string) {
+    const folders: { id: string; name: string; path: string }[] = [];
+
+    const getSubFolders = async (folderId: string, prevPath: string = "") => {
+      const res = await this.drive_client.files.list({
+        q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+        fields: "files(id, name)",
+      });
+      const files = res.data.files!;
+
+      await Promise.all(
+        files.map(async (file) => {
+          const { id, name } = file;
+          if (!file || !id || !name || id === filterId) return;
+          const newPath = prevPath + "/" + name;
+          folders.push({ id, name, path: newPath });
+          await getSubFolders(id, newPath);
+        })
+      );
+    };
+
+    await getSubFolders("root");
+    folders.push({ id: "", name: "root", path: "/" });
+    return folders;
+  }
 
   /**
    * Creates a new folder in Google Drive.
@@ -207,19 +207,28 @@ export class GoogleDriveService {
    * @returns The ID of the created folder.
    */
   public async createFolder(folder_name: string, folder_id?: string): Promise<string> {
-    const requestBody: { name: string; mimeType: string; parents?: string[] } = {
-      name: folder_name,
-      mimeType: "application/vnd.google-apps.folder",
-    };
-    if (folder_id) requestBody.parents = [folder_id];
-    const response = await this.drive_client.files.create({
-      requestBody,
-      fields: "id",
-    });
-    return response.data.id!;
+    try {
+      const requestBody: { name: string; mimeType: string; parents?: string[] } = {
+        name: folder_name,
+        mimeType: "application/vnd.google-apps.folder",
+      };
+
+      if (folder_id) requestBody.parents = [folder_id];
+      const {
+        data: { id },
+      } = await this.drive_client.files.create({
+        requestBody,
+        fields: "id",
+      });
+
+      if (!id) throw new Error("Error while creating a folder!");
+      return id;
+    } catch (error) {
+      throw new Error(`Error while creating a folder! ${error}`);
+    }
   }
 
-  public async moveFile(file_id: string, folder_id: string) {
+  public async moveFile(file_id: string, folder_id?: string) {
     try {
       const file = await this.drive_client.files.get({
         fileId: file_id,
@@ -233,8 +242,8 @@ export class GoogleDriveService {
         removeParents: previousParents,
         fields: "id, parents",
       });
-    } catch (error) {
-      console.log(error);
+    } catch (error: any) {
+      throw new Error(error);
     }
   }
 
@@ -270,7 +279,7 @@ export class GoogleDriveService {
         fileId,
       });
     } catch (error) {
-      console.error(error);
+      console.error("Error failed", error);
     }
   }
 
@@ -283,14 +292,13 @@ export class GoogleDriveService {
         },
       });
     } catch (err) {
-      console.error(err);
+      console.error("Moving to trash failed: ", err);
     }
   }
 
   public async uploadSingleFile(uploadFile: TUploadFile) {
     try {
       const { name, stream, fileSize, parentId, mimeType } = uploadFile;
-      // if (stream.readableLength > 0) {
       await this.drive_client.files.create({
         requestBody: {
           name,
@@ -302,7 +310,6 @@ export class GoogleDriveService {
           mimeType,
         },
       });
-      // }
     } catch (error) {
       console.log("Error while uploading to google drive", error);
     }
