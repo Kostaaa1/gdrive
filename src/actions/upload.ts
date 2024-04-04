@@ -1,5 +1,5 @@
 import path from "path";
-import { gdrive, questions } from "../config/config.js";
+import { cache, gdrive, questions } from "../config/config.js";
 import {
   convertPathToStream,
   convertUrlToStream,
@@ -7,15 +7,53 @@ import {
   getMimeType,
   isDirectory,
   isExtensionValid,
-  handleCancelOnKey,
   initProgressBar,
 } from "../utils/utils.js";
 import { processFolderActions } from "./folder.js";
 import { processMainActions } from "../index.js";
 import { readdir } from "fs/promises";
-import { Scraper } from "../service/Scraper.js";
+import pLimit from "p-limit";
+import { scrapeMedia } from "../service/Scraper.js";
+import { addItem, populate } from "../store/store.js";
 
 const { upload_questions, input, scraping_questions } = questions;
+
+export const scrapeAndUpload = async (id?: string) => {
+  const { name, url: scrapeUrl, duration, types } = await scraping_questions();
+  const urls = await scrapeMedia(scrapeUrl, types, duration);
+
+  const progressBar = initProgressBar(urls.length);
+  const limit = pLimit(20);
+
+  let parentId = id;
+  if (name) parentId = await gdrive.createFolder(name, id);
+
+  const processes = urls.map(async (url) => {
+    return limit(async () => {
+      const stream = await convertUrlToStream(url);
+      if (!stream) return;
+
+      await gdrive.uploadSingleFile({
+        name: extractFileNameFromUrl(url),
+        stream,
+        parentId,
+      });
+
+      progressBar.increment();
+    });
+  });
+
+  await Promise.all(processes)
+    .then(() => console.log("\nUploading finished"))
+    .catch((err) => console.error("Error occurred:", err));
+
+  if (id) {
+    const items = await gdrive.getFolderItems(id);
+    populate(id, items);
+  }
+
+  progressBar.stop();
+};
 
 export const processUploadActions = async (parent?: { name: string; parentId: string }) => {
   try {
@@ -25,45 +63,23 @@ export const processUploadActions = async (parent?: { name: string; parentId: st
         await handleUploadFromPath(parent);
         break;
       case "SCRAPE":
-        const { name, url: scrapeUrl, duration } = await scraping_questions();
-        const scraper = new Scraper();
-        const urls = await scraper.scrapeMedia(scrapeUrl, "IMAGES", duration);
-
-        const progressBar = initProgressBar(urls.length);
-        const { stdin } = process;
-        stdin.resume();
-        stdin.setRawMode(true);
-        stdin.setEncoding("utf-8");
-
-        let cancel = { value: false };
-        handleCancelOnKey(cancel, () => progressBar.stop());
-
-        const parentId = await gdrive.createFolder(name, parent?.parentId);
-        for (let i = 0; i < urls.length && !cancel.value; i++) {
-          const url = urls[i];
-          const stream = await convertUrlToStream(url);
-          if (!stream) return;
-
-          const n = extractFileNameFromUrl(url);
-          await gdrive.uploadSingleFile({ name: n, stream, parentId });
-
-          progressBar.increment();
-          if (i === urls.length - 1) progressBar.stop();
-        }
+        await scrapeAndUpload(parent?.parentId);
         break;
       case "URL":
         await handleUploadFromUrl(parent?.parentId);
         break;
     }
-    parent ? await processFolderActions({ id: parent.parentId }) : await processMainActions();
+
+    parent ? await processFolderActions(parent.parentId) : await processMainActions();
   } catch (err) {
-    parent ? await processFolderActions({ id: parent.parentId }) : await processMainActions();
+    parent ? await processFolderActions(parent.parentId) : await processMainActions();
   }
 };
 
 const handleUploadFromUrl = async (parentId?: string) => {
   const url = await input("Enter the URL: ");
   const stream = await convertUrlToStream(url);
+  if (!stream) return;
 
   let name = await input("Enter the name of the file: ");
   if (!isExtensionValid(name)) {
@@ -77,23 +93,25 @@ export const handleUploadFolder = async (
   parent?: { name: string; parentId: string }
 ) => {
   const folderName = path.basename(resPath);
-  const parentId =
-    parent && parent.name
-      ? await gdrive.createFolder(folderName, parent.parentId)
-      : await gdrive.getFolderIdWithName(folderName, parent?.parentId);
-
+  // const parentId =
+  //   parent && parent.name
+  //     ? await gdrive.createFolder(folderName, parent.parentId)
+  //     : await gdrive.getFolderIdWithName(folderName, parent.parentId);
+  const parentId = await gdrive.createFolder(folderName, parent?.parentId);
   const res = await readdir(resPath);
   const files = res.reverse();
 
   let progressBar;
   if (files.length > 1) {
-    progressBar = initProgressBar(files.length);
+    const bar = initProgressBar(files.length);
+    progressBar = bar;
   }
 
   for (let i = 0; i < files.length; i++) {
     const fileName = files[i];
     const fullPath = path.join(resPath, fileName);
     const mimeType = getMimeType(fullPath);
+
     if (mimeType) {
       const stream = await convertPathToStream(fullPath);
       await gdrive.uploadSingleFile({
@@ -106,7 +124,6 @@ export const handleUploadFolder = async (
       const isFolder = await isDirectory(fullPath);
       if (isFolder) await handleUploadFolder(fullPath, { name: fileName, parentId });
     }
-
     if (progressBar) {
       progressBar.increment();
       if (i === files.length - 1) {
@@ -138,6 +155,6 @@ export const handleUploadFromPath = async (parent?: { name: string; parentId: st
       });
     }
   } catch (error) {
-    parent ? await processFolderActions({ id: parent.parentId }) : await processMainActions();
+    parent ? await processFolderActions(parent.parentId) : await processMainActions();
   }
 };

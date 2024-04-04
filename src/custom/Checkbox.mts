@@ -20,6 +20,7 @@ import figures from "figures";
 import ansiEscapes from "ansi-escapes";
 import { Separator as CustomSeparator } from "./Separator.mjs";
 import { notify } from "../utils/utils.js";
+import stringWidth from "string-width";
 
 type CheckboxTheme = {
   icon: {
@@ -203,10 +204,11 @@ export default createPrompt(
     });
 
     if (status === "done") {
-      const selection = items.filter(isChecked);
-      const answer = theme.style.answer(theme.style.renderSelectedChoices(selection, items));
-
-      return `${prefix} ${message} ${answer}`;
+      const selection = items.filter(isChecked).slice(0, 3);
+      const answer = theme.style.answer(
+        theme.style.renderSelectedChoices(selection, items) + "..."
+      );
+      return `${prefix} ${message} ${selection.length < 3 ? answer : answer}`;
     }
 
     let helpTip = "";

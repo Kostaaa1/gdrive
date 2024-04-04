@@ -1,6 +1,6 @@
 import { gdrive, questions } from "../config/config.js";
 import { processMainActions } from "../index.js";
-import { notify } from "../utils/utils.js";
+import { initProgressBar, notify } from "../utils/utils.js";
 
 export const processTrashActions = async () => {
   try {
@@ -11,19 +11,21 @@ export const processTrashActions = async () => {
     }
 
     const { selectedItems, action } = await questions.trash_questions(trashItems);
-    if (selectedItems.length === trashItems.length) {
-      if (action === "DELETE") await gdrive.emptyTrash();
+    const progressBar = initProgressBar(selectedItems.length);
+
+    if (selectedItems.length === trashItems.length && action === "DELETE") {
+      await gdrive.emptyTrash();
     } else {
-      for (const item of selectedItems) {
-        switch (action) {
-          case "RECOVER":
-            await gdrive.recoverTrashItem(item.id);
-            break;
-          case "DELETE":
-            await gdrive.deleteItem(item.id);
-            break;
+      const processes = selectedItems.map(async ({ id }) => {
+        if (action === "RECOVER") {
+          await gdrive.recoverTrashItem(id);
+        } else if (action === "DELETE") {
+          await gdrive.deleteItem(id);
         }
-      }
+        progressBar.increment();
+      });
+      await Promise.all(processes);
+      progressBar.stop();
     }
 
     await processMainActions();

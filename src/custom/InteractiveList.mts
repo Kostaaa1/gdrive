@@ -72,6 +72,7 @@ type SelectConfig<Value, KeyValue> = {
   theme?: PartialDeep<Theme<SelectTheme>>;
   prefix?: string;
   sufix?: string;
+  includeSeperators?: boolean;
 };
 
 function isSelectable<Value>(item: Item<Value>): item is Choice<Value> {
@@ -94,6 +95,7 @@ export default async <Value, KeyValue = never>(
         prefix: initPrefix,
         actionMsg,
         sufix = chalk.gray("Press <ESC> to return"),
+        includeSeperators = true,
       } = config;
       const styledActionMessage = actionMsg ? chalk.underline.italic(actionMsg) : "";
 
@@ -102,12 +104,15 @@ export default async <Value, KeyValue = never>(
       const { isSeparator } = Separator;
 
       const prefix: string = (initPrefix || "") + usePrefix({ theme }) + " ";
+      // let page;
+      let page = chalk.grey.bold("0 items");
 
       const bounds = useMemo(() => {
         const first = items.findIndex(isSelectable);
         const last = items.length - 1 - [...items].reverse().findIndex(isSelectable);
-        if (first < 0)
-          throw new Error("[select prompt] No selectable choices. All choices are disabled.");
+        // if (first < 0)
+        // throw new Error("[select prompt] No selectable choices. All choices are disabled.");
+
         return { first, last };
       }, [items]);
 
@@ -131,6 +136,7 @@ export default async <Value, KeyValue = never>(
           // @ts-ignore
           (key.name === "tab" && key.shift)
         ) {
+          if (items.length === 0) return;
           // @ts-ignore
           const shouldGoUp = isUpKey(key) || (key.name === "tab" && key.shift);
           const shouldGoDown = isDownKey(key) || key.name === "tab";
@@ -171,27 +177,29 @@ export default async <Value, KeyValue = never>(
         // helpTip = theme.style.help("(Use arrow keys)");
       }
 
-      let page = usePagination<Item<Value>>({
-        items,
-        active,
-        renderItem({ item, isActive }: { item: Item<Value>; isActive: boolean }) {
-          if (isSeparator(item)) {
-            return `${item.separator}`;
-          }
-          const line = item.name || item.value;
-          if (item.disabled) {
-            const disabledLabel =
-              typeof item.disabled === "string" ? item.disabled : "(disabled)";
-            return theme.style.disabled(`${line} ${disabledLabel}`);
-          }
-          const color = isActive ? theme.style.highlight : (x: string) => x;
-          const cursor = isActive ? theme.icon.cursor : ` `;
-          return color(chalk.italic(`${cursor} ${line}`));
-        },
-        pageSize,
-        loop,
-        theme,
-      });
+      if (items.length > 0) {
+        page = usePagination<Item<Value>>({
+          items,
+          active,
+          renderItem({ item, isActive }: { item: Item<Value>; isActive: boolean }) {
+            if (isSeparator(item)) {
+              return `${item.separator}`;
+            }
+            const line = item.name || item.value;
+            if (item.disabled) {
+              const disabledLabel =
+                typeof item.disabled === "string" ? item.disabled : "(disabled)";
+              return theme.style.disabled(`${line} ${disabledLabel}`);
+            }
+            const color = isActive ? theme.style.highlight : (x: string) => x;
+            const cursor = isActive ? theme.icon.cursor : ` `;
+            return color(chalk.italic(`${cursor} ${line}`));
+          },
+          pageSize,
+          loop,
+          theme,
+        });
+      }
 
       const keyActions =
         actions && actions?.length > 0
@@ -201,25 +209,28 @@ export default async <Value, KeyValue = never>(
           : "";
 
       const keyActionOutput = [styledActionMessage, keyActions].filter(Boolean).join("\n\n");
-      const choiceDescription = selectedChoice.description
-        ? `\n${chalk.gray(`${selectedChoice.description}`)}`
-        : "";
+      const choiceDescription =
+        items.length > 0 && selectedChoice.description
+          ? `\n${chalk.gray(`${selectedChoice.description}`)}`
+          : "";
 
       const separator = new Separator(process.stdout.columns).separator;
 
-      const lheader = prefix + message;
-      const length = process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix);
-      const header =
-        lheader +
-        " ".repeat(length >= 0 ? length : process.stdout.columns - stringWidth(sufix)) +
-        chalk.gray(sufix);
+      let lheader = prefix + message;
+      if (sufix) {
+        const length = process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix);
+        lheader =
+          lheader +
+          " ".repeat(length >= 0 ? length : process.stdout.columns - stringWidth(sufix)) +
+          chalk.gray(sufix);
+      }
 
       return [
-        header,
-        separator,
+        lheader,
+        includeSeperators && separator,
         page,
         choiceDescription,
-        separator,
+        includeSeperators && separator,
         keyActionOutput,
         ansiEscapes.cursorHide,
       ]

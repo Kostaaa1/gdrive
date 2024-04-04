@@ -1,70 +1,79 @@
 import puppeteer from "puppeteer";
-import axios from "axios";
-import { Readable } from "stream";
 import { ScrapingOpts } from "../types/types.js";
-import { isBase64, isExtensionValid, stop } from "../utils/utils.js";
+import { stop } from "../utils/utils.js";
 
-export class Scraper {
-  async scrapeMedia(
-    url: string,
-    type: ScrapingOpts,
-    timeToScrape: number = 15000
-  ): Promise<string[]> {
-    console.log(`Scraping ${url}...`);
-    const browser = await puppeteer.launch({ defaultViewport: null });
-    const page = await browser.newPage();
-    await page.goto(url);
+type ScrapeMedia = ("img" | "video" | "source" | "iframe")[];
 
-    // const currentUrl = page.url();
-    // if (currentUrl !== url) {
-    //   console.log("\nMake sure you have entered the correct url");
-    //   await browser.close();
-    //   return [];
-    // }
+export const scrapeMedia = async (
+  url: string,
+  media: ScrapingOpts[],
+  stoppingPeriod: number | null
+) => {
+  console.log(`Scrapiing ${url}...`);
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
 
-    const media = {
-      IMAGES: "img",
-      VIDEOS: "video source",
-    }[type] as "img" | "video source";
+  const page = await browser.newPage();
+  await page.setUserAgent(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.9999.99 Safari/537.36"
+  );
 
-    await page.waitForSelector(media);
-    let imgSources: any[] = [];
+  await page.goto(url, { waitUntil: ["networkidle2", "load"] });
+  await page.setViewport({
+    width: 1920,
+    height: 1080,
+    deviceScaleFactor: 1,
+  });
 
-    const extractSources = async () => {
-      imgSources = await page.$$eval(media, (images) => {
-        return images.map(({ src, getAttribute }) => src || getAttribute("data-src"));
-      });
+  try {
+    let previousHeight;
+    let currentHeight = 0;
+
+    const parsedMedia = media
+      .map((x) => (x === "IMAGE" ? "img" : x === "VIDEO" ? "video" : ""))
+      .filter((x) => x.length > 0) as ScrapeMedia;
+    if (parsedMedia.includes("video")) parsedMedia.push("source");
+
+    const triggerInfiniteScroll = async () => {
+      while (true) {
+        previousHeight = currentHeight;
+        currentHeight = (await page.evaluate("document.body.scrollHeight")) as number;
+        if (previousHeight >= currentHeight) break;
+        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)");
+        await stop(2000);
+      }
     };
 
-    let previousHeight = 0;
-    const timeoutPromise = new Promise((res) => {
-      setTimeout(res, timeToScrape);
-    });
+    if (stoppingPeriod) {
+      await Promise.race([
+        new Promise((resolve) => setTimeout(resolve, stoppingPeriod)),
+        await triggerInfiniteScroll(),
+      ]);
+    } else {
+      await triggerInfiniteScroll();
+    }
 
-    await Promise.race([
-      timeoutPromise,
-      (async () => {
-        while (true) {
-          await page.evaluate(() => {
-            window.scrollTo(0, document.body.scrollHeight);
-          });
+    const mediaSources = await page.evaluate(async (parsedMedia) => {
+      const sources: string[] = [];
+      for (const m of parsedMedia) {
+        const s = document.querySelectorAll(m);
+        s.forEach((tag) => {
+          const source = tag.getAttribute("src") || tag.getAttribute("data-src");
+          if (source) {
+            sources.push(source);
+          }
+        });
+      }
+      return sources;
+    }, parsedMedia);
 
-          await stop(2000);
-          await extractSources();
-
-          const newHeight = await page.evaluate(() => {
-            return document.body.scrollHeight;
-          });
-
-          if (newHeight === previousHeight) break;
-          previousHeight = newHeight;
-        }
-      })(),
-    ]);
-
+    return mediaSources;
+  } catch (err) {
+    console.log(err);
+    return [];
+  } finally {
     await browser.close();
-    console.log(`Scraping done. Found ${imgSources.length} items.`);
-    // Maybe filter the urls without ext???
-    return imgSources.filter((x, i, arr) => arr.indexOf(x) === i);
   }
-}
+};

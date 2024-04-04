@@ -26,17 +26,17 @@ export const processSelectedFile = async (file: TFile, folder?: { name: string; 
       case "DELETE":
         const proceed = await areYouSure("Are you sure?");
         if (proceed) await gdrive.deleteItem(id);
-        folder ? await processFolderActions({ id: folder.id }) : await processMainActions();
+        folder ? await processFolderActions(folder.id) : await processMainActions();
         break;
       case "TRASH":
         const proceed1 = await areYouSure("Are you sure?");
         if (proceed1) await gdrive.moveToTrash(id);
-        folder ? await processFolderActions({ id: folder.id }) : await processMainActions();
+        folder ? await processFolderActions(folder.id) : await processMainActions();
         break;
       case "RENAME":
         const newName = await rename(name);
         await gdrive.rename(newName, id);
-        folder ? await processFolderActions({ id: folder.id }) : await processMainActions();
+        folder ? await processFolderActions(folder.id) : await processMainActions();
         break;
       case "INFO":
         // console.clear();
@@ -64,7 +64,7 @@ export const processSelectedFile = async (file: TFile, folder?: { name: string; 
           }
           await gdrive.downloadFile(newPath, id);
         }
-        folder ? await processFolderActions({ id: folder.id }) : await processMainActions();
+        folder ? await processFolderActions(folder.id) : await processMainActions();
         break;
       case "OPEN":
         await open(`https://drive.google.com/file/d/${id}/view`);
@@ -83,7 +83,7 @@ export const processSelectedFile = async (file: TFile, folder?: { name: string; 
     }
   } catch (error) {
     if (folder) {
-      await processFolderActions({ id: folder.id });
+      await processFolderActions(folder.id);
     } else {
       await processMainActions();
     }

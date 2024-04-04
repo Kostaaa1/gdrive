@@ -8,7 +8,8 @@ import path from "path";
 import { readdir, access, mkdir } from "fs/promises";
 import chalk from "chalk";
 import { Presets, SingleBar } from "cli-progress";
-import { StorageQuota } from "../types/types.js";
+import { ScrapingOpts, StorageQuota } from "../types/types.js";
+import puppeteer from "puppeteer";
 
 export function formatDate(date: string) {
   const formattedDate = new Date(date).toLocaleString("en-US", {
@@ -156,9 +157,13 @@ export async function getUrlMimeType(url: string): Promise<string | undefined> {
   }
 }
 
-export async function convertUrlToStream(url: string): Promise<internal.Readable> {
-  const res = await axios.get(url, { responseType: "stream" });
-  return res.status === 200 ? res.data : [];
+export async function convertUrlToStream(url: string): Promise<internal.Readable | null> {
+  try {
+    const res = await axios.get(url, { responseType: "stream" });
+    return res.status === 200 ? res.data : [];
+  } catch (error) {
+    return null;
+  }
 }
 
 export async function convertPathToStream(filePath: string): Promise<internal.Readable> {
@@ -316,24 +321,6 @@ export function isGdriveFolder(type: string) {
   return type === "application/vnd.google-apps.folder";
 }
 
-export function isBase64(str: string) {
-  const prefix = "data:image/";
-  const base64Index = str.indexOf(";base64,");
-
-  if (base64Index === -1 || !str.startsWith(prefix)) {
-    return false;
-  }
-
-  const base64Str = str.slice(base64Index + ";base64,".length);
-  try {
-    const decodedData = atob(base64Str);
-    return true;
-  } catch (error) {
-    console.error("Error:", error);
-    return false;
-  }
-}
-
 export function base64ToStream(base64str: string) {
   const byteCharacters = atob(base64str);
   const byteNumbers = new Array(byteCharacters.length);
@@ -346,32 +333,32 @@ export function base64ToStream(base64str: string) {
   return blob;
 }
 
-export function handleCancelOnKey(cancel: { value: boolean }, cb: () => void) {
-  const { stdin } = process;
+// export function handleCancelOnKey(cancel: { value: boolean }, cb: () => void) {
+//   const { stdin } = process;
+//   const cancelHandler = (key: any) => {
+//     const keyPressed = key.toString();
+//     if (keyPressed === "\u001b") {
+//       cancel.value = true;
+//       console.log("\nProcess terminated, proceeding the action...");
+//       cb();
+//       stdin.setRawMode(false);
+//       stdin.pause();
 
-  const cancelHandler = (key: any) => {
-    const keyPressed = key.toString();
-    if (keyPressed === "\u001b") {
-      cancel.value = true;
-      console.log("\nProcess terminated, proceeding the action...");
-      cb();
-      stdin.setRawMode(false);
-      stdin.pause();
-
-      stdin.removeListener("data", cancelHandler);
-    }
-  };
-  stdin.on("data", cancelHandler);
-}
+//       stdin.removeListener("data", cancelHandler);
+//     }
+//   };
+//   stdin.on("data", cancelHandler);
+// }
 
 export function initProgressBar(itemsLength: number, message: string = ""): SingleBar {
-  const msg = `${message} Progress [{bar}] {percentage}% | ETA: {eta}s | {value}/{total}`;
+  const msg = `${message} Progress [{bar}] {percentage}% | {value}/{total}`;
   const progressBar = new SingleBar(
     {
       format: msg,
     },
     Presets.rect
   );
+
   progressBar.start(itemsLength, 0);
   return progressBar;
 }

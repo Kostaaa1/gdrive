@@ -4,6 +4,7 @@ import { drive_v3, google } from "googleapis";
 import readline from "readline-sync";
 import { convertBytes, formatDate, formatStorageQuotaMessage, stop } from "../utils/utils.js";
 import { TFile, TFolder, TUploadFile } from "../types/types.js";
+import pLimit from "p-limit";
 
 const {
   GOOGLE_CLIENT_ID = "",
@@ -77,17 +78,6 @@ export class GoogleDriveService {
       : [];
   }
 
-  // public async getRootFolders(): Promise<TFile[]> {
-  //   const res = await this.drive_client.files.list({
-  //     q: "mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false",
-  //     fields: "files(id, name, mimeType)",
-  //   });
-  //   const folders = res.data.files as TFile[];
-  //   return folders.length > 0
-  //     ? folders.map((x) => ({ name: x.name, value: x.name, mimeType: x.mimeType, id: x.id }))
-  //     : [];
-  // }
-
   public async updateFileName(fileId: string, newName: string) {
     /// update name
   }
@@ -95,25 +85,23 @@ export class GoogleDriveService {
   public async getFolderItems(
     folderId: string,
     pageToken?: string,
-    pageSize: number = 300
-  ): Promise<{ files: TFile[]; nextPageToken: string | null | undefined }> {
+    pageSize: number = 800
+  ): Promise<TFile[]> {
     const res = await this.drive_client.files.list({
       q: `'${folderId}' in parents and trashed=false`,
-      fields: "nextPageToken,files(id, name, mimeType)",
+      fields: "files(id, name, mimeType)",
       orderBy: "folder",
       pageSize,
       pageToken,
     });
-
-    const nextPageToken = res.data.nextPageToken;
     const files = res.data.files;
-
-    return { files: files as TFile[], nextPageToken };
+    if (!files) throw new Error("e");
+    return files as TFile[];
   }
 
   public async getFileCountInFolder(folderId: string): Promise<number> {
-    const res = await this.getFolderItems(folderId);
-    return res.files.length;
+    const files = await this.getFolderItems(folderId);
+    return files.length;
   }
 
   // public async fileExists(folderId: string, name: string): Promise<boolean> {
@@ -132,16 +120,14 @@ export class GoogleDriveService {
   public async getFolderIdWithName(name: string, parentId?: string): Promise<string> {
     try {
       const res = await this.drive_client.files.list({
-        q: parentId
-          ? `'${parentId}' in parents and `
-          : "" +
-            `mimeType='application/vnd.google-apps.folder' and name='${name}' and trashed=false`,
-
+        q: `'${
+          parentId || "root"
+        }' in parents and mimeType='application/vnd.google-apps.folder' and name='${name}' and trashed=false`,
         fields: "files(id)",
       });
       const files = res.data.files;
-
       const folder = files?.[files.length - 1];
+
       if (folder && folder.id) {
         return folder.id;
       } else {
@@ -174,8 +160,19 @@ export class GoogleDriveService {
     return res.data.name;
   }
 
+  public async getItem(id: string): Promise<TFile> {
+    const res = await this.drive_client.files.get({
+      fileId: id,
+      fields: "files(id, name, mimeType)",
+    });
+    if (!res.data) throw new Error("Error while getting the name of the items: " + id);
+    return res.data as TFile;
+  }
+
   public async getDriveFolders(filterId?: string) {
-    const folders: { id: string; name: string; path: string }[] = [];
+    const folders: { id: string; name: string; path: string }[] = [
+      { id: "", name: "root", path: "/" },
+    ];
 
     const getSubFolders = async (folderId: string, prevPath: string = "") => {
       const res = await this.drive_client.files.list({
@@ -183,20 +180,21 @@ export class GoogleDriveService {
         fields: "files(id, name)",
       });
       const files = res.data.files!;
+      const limit = pLimit(4);
 
-      await Promise.all(
-        files.map(async (file) => {
+      const processes = files.map((file) => {
+        return limit(async () => {
           const { id, name } = file;
           if (!file || !id || !name || id === filterId) return;
           const newPath = prevPath + "/" + name;
           folders.push({ id, name, path: newPath });
           await getSubFolders(id, newPath);
-        })
-      );
+        });
+      });
+      await Promise.all(processes);
     };
 
     await getSubFolders("root");
-    folders.push({ id: "", name: "root", path: "/" });
     return folders;
   }
 
@@ -247,6 +245,7 @@ export class GoogleDriveService {
     }
   }
 
+  // Change it to return only readable stream
   public async downloadFile(path: string, fileId: string) {
     try {
       const fileStream = createWriteStream(path);
@@ -297,8 +296,8 @@ export class GoogleDriveService {
   }
 
   public async uploadSingleFile(uploadFile: TUploadFile) {
+    const { name, stream, parentId, mimeType } = uploadFile;
     try {
-      const { name, stream, fileSize, parentId, mimeType } = uploadFile;
       await this.drive_client.files.create({
         requestBody: {
           name,
@@ -311,7 +310,8 @@ export class GoogleDriveService {
         },
       });
     } catch (error) {
-      console.log("Error while uploading to google drive", error);
+      console.log("NDSAKDOSKAODKAOSKDOASKO");
+      throw error;
     }
   }
 

@@ -56,12 +56,13 @@ export class ClientQuestions {
     return bool;
   }
 
-  public async input(message: string): Promise<string> {
+  public async input(message: string, validate?: () => boolean): Promise<string> {
     const { answer } = await inquirer.prompt([
       {
         type: "input",
         name: "answer",
         message,
+        validate,
       },
     ]);
     return answer.trim();
@@ -212,55 +213,35 @@ export class ClientQuestions {
         ? `Choose action for folder ${folderMsg}: `
         : `The folder ${folderMsg} is empty. Choose action: `;
 
-    let answer;
-    if (files.length > 0) {
-      answer = await interactiveList<TFile, FolderActions>({
-        message,
-        choices: [
-          ...files.map((file) => ({
-            name: `${file.name} ${isGdriveFolder(file.mimeType) ? chalk.gray("(folder)") : ""}`,
-            value: file,
-          })),
-        ],
-        actionMsg: "Folder actions:",
-        actions: [
-          {
-            name: "Upload from your machine or from other sources",
-            value: "UPLOAD",
-            key: "u",
-          },
-          { name: "Download folder: ", value: "DOWNLOAD", key: "z" },
-          { name: "Move folder: ", value: "MOVE", key: "m" },
-          { name: "Rename folder", value: "RENAME", key: "r" },
-          { name: "Operate with items", value: "ITEM_OPERATIONS", key: "o" },
-          { name: "Delete folder", value: "DELETE", key: "d" },
-          { name: "Move folder to trash", value: "TRASH", key: "t" },
-          {
-            name: "Create new empty folder",
-            value: "CREATE",
-            key: "n",
-          },
-        ],
-      });
-    } else {
-      answer = await interactiveList<FolderActions>({
-        message,
-        choices: [
-          {
-            name: "Upload from your machine or from other sources",
-            value: "UPLOAD",
-          },
-          { name: "Rename Folder", value: "RENAME" },
-          // { name: "Operate with items", value: "ITEM_OPERATIONS" },
-          { name: "Delete folder", value: "DELETE" },
-          { name: "Move folder to trash", value: "TRASH" },
-          {
-            name: "Create new empty folder",
-            value: "CREATE",
-          },
-        ],
-      });
-    }
+    const answer = await interactiveList<TFile, FolderActions>({
+      message,
+      choices: [
+        ...files.map((file) => ({
+          name: `${file.name} ${isGdriveFolder(file.mimeType) ? chalk.gray("(folder)") : ""}`,
+          value: file,
+        })),
+      ],
+      actionMsg: "Folder actions:",
+      actions: [
+        {
+          name: "Upload from your machine or from other sources",
+          value: "UPLOAD",
+          key: "u",
+        },
+        { name: "Download folder", value: "DOWNLOAD", key: "z" },
+        { name: "Move folder", value: "MOVE", key: "m" },
+        { name: "Rename folder", value: "RENAME", key: "r" },
+        { name: "Operate with items", value: "ITEM_OPERATIONS", key: "o" },
+        { name: "Delete folder", value: "DELETE", key: "d" },
+        { name: "Move folder to trash", value: "TRASH", key: "t" },
+        {
+          name: "Create new empty folder",
+          value: "CREATE",
+          key: "n",
+        },
+      ],
+    });
+
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
     return answer;
   }
@@ -337,45 +318,100 @@ export class ClientQuestions {
 
   public async scraping_questions(): Promise<{
     url: string;
-    name: string;
-    duration: number;
-    type: ScrapingOpts;
+    types: ScrapingOpts[];
+    name: string | null;
+    duration: number | null;
   }> {
     const { url } = await inquirer.prompt({
       message: "Enter the URL of the webpage you want to scrape: ",
       name: "url",
       type: "input",
-    });
-    const { name } = await inquirer.prompt({
-      message: "The name for new folder: ",
-      name: "name",
-      type: "input",
-    });
-    const { duration } = await inquirer.prompt({
-      message: `Enter the duration of the scraping action ${chalk.gray(
-        "(in seconds, recommended 5-15 seconds)"
-      )}: `,
-      name: "duration",
-      type: "input",
-      default: () => {},
       validate: (input: any) => {
-        if (!isNaN(input)) {
+        try {
+          new URL(input);
           return true;
-        } else {
-          console.log(`\n${chalk.red("Incorrect input. Please provide a number")}`);
+        } catch (error) {
+          console.log(`\n${chalk.red("Input is invalid. URL input is needed.")}`);
           return false;
         }
+        // }
       },
     });
-    const type = await interactiveList<ScrapingOpts>({
-      message: "Pick media to scrape: ",
+
+    const { bool } = await inquirer.prompt([
+      {
+        message: "Do you want to create new folder for scraped files?",
+        type: "confirm",
+        name: "bool",
+      },
+    ]);
+
+    let name: string | null = null;
+    if (bool) {
+      const res = await inquirer.prompt({
+        message: "The name for new folder: ",
+        name: "name",
+        type: "input",
+      });
+      name = res.name;
+    }
+
+    const durationType = await interactiveList<"LIMIT" | "FULL">({
+      message: "Select: ",
       choices: [
-        { name: "Videos", value: "VIDEOS" },
-        { name: "Images", value: "IMAGES" },
+        {
+          name: "Limited scrape",
+          value: "LIMIT",
+          description: "You will be asked to provide a duration of scraping process (seconds).",
+        },
+        {
+          name: "Full scrape",
+          value: "FULL",
+          description: "Full scrape. Scrape all URLs from page.",
+        },
       ],
+      includeSeperators: false,
     });
-    if (type === "EVENT_INTERRUPTED") throw new Error(type);
-    return { url, duration: duration * 1000, name, type };
+
+    let duration: number | null = null;
+    if (durationType === "LIMIT") {
+      const res = await inquirer.prompt({
+        message: `Enter the duration of the scraping action ${chalk.gray(
+          "(in seconds, recommended 5-15 seconds)"
+        )}: `,
+        name: "duration",
+        type: "input",
+        default: () => {},
+        validate: (input: any) => {
+          if (!isNaN(input)) {
+            return true;
+          } else {
+            console.log(`\n${chalk.red("Incorrect input. Please provide a number")}`);
+            return false;
+          }
+        },
+      });
+      duration = res.duration;
+    }
+
+    const selectMedia = async () => {
+      const data = await checkboxPrompt<ScrapingOpts>({
+        message: "Select the media you want to get: ",
+        choices: [
+          { name: "Images", value: "IMAGE" },
+          { name: "Videos", value: "VIDEO" },
+        ],
+      });
+      return data;
+    };
+
+    const selected = await selectMedia();
+    if (selected.length === 0) {
+      await notify("No items selected, make sure you have selected items in order to proceed.");
+      await selectMedia();
+    }
+    if (durationType === "EVENT_INTERRUPTED") throw new Error(durationType);
+    return { url, duration: duration ? duration * 1000 : null, name, types: selected };
   }
 
   public async move_questions(folders: TFolder[]) {
