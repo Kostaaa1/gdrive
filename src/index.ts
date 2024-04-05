@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { gdrive, questions, cache } from "./config/config.js";
+import { cache, gdrive, questions } from "./config/config.js";
 import { isGdriveFolder, openFile } from "./utils/utils.js";
 import { processFolderActions } from "./actions/folder.js";
 import { processSelectedFile } from "./actions/file.js";
@@ -7,7 +7,7 @@ import { processTrashActions } from "./actions/trash.js";
 import open from "open";
 import { processUploadActions } from "./actions/upload.js";
 import { processMultipleItems } from "./actions/batch.js";
-import { getItems } from "./store/store.js";
+import { addCacheItem, getItems } from "./store/store.js";
 
 const { input_path, input } = questions;
 
@@ -27,7 +27,8 @@ export const processMainActions = async () => {
         break;
       case "CREATE":
         const newFolder = await input("Enter new folder name: ");
-        await gdrive.createFolder(newFolder);
+        const folder = await gdrive.createFolder(newFolder);
+        addCacheItem("root", folder);
         await processMainActions();
         break;
       case "OPEN":
@@ -62,7 +63,6 @@ export const processMainActions = async () => {
   await gdrive.authorize();
   await processMainActions();
   /////////////////////////////
-
   //   "https://www.twitch.tv/mellooow_/clip/CrazyBlueCookiePermaSmug-gOKwhWbVkl7DFo4G?filter=clips&range=30d&sort=time";
   // const { id, mimeType, stream, username, title } = await twitch.getTwitchVideo(url);
   // await gdrive.uploadSingleFile({ name: title, stream, mimeType });

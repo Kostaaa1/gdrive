@@ -71,8 +71,9 @@ type SelectConfig<Value, KeyValue> = {
   default?: unknown;
   theme?: PartialDeep<Theme<SelectTheme>>;
   prefix?: string;
-  sufix?: string;
+  sufix?: string | null;
   includeSeperators?: boolean;
+  historyId?: number;
 };
 
 function isSelectable<Value>(item: Item<Value>): item is Choice<Value> {
@@ -94,25 +95,23 @@ export default async <Value, KeyValue = never>(
         actions,
         prefix: initPrefix,
         actionMsg,
-        sufix = chalk.gray("Press <ESC> to return"),
+        sufix,
         includeSeperators = true,
+        historyId = 0,
       } = config;
       const styledActionMessage = actionMsg ? chalk.underline.italic(actionMsg) : "";
-
       const firstRender = useRef(true);
       const theme = makeTheme<SelectTheme>(selectTheme, config.theme);
       const { isSeparator } = Separator;
 
       const prefix: string = (initPrefix || "") + usePrefix({ theme }) + " ";
-      // let page;
       let page = chalk.grey.bold("0 items");
 
       const bounds = useMemo(() => {
-        const first = items.findIndex(isSelectable);
+        const first = items.findIndex((x, id) => isSelectable(x) && id === historyId);
         const last = items.length - 1 - [...items].reverse().findIndex(isSelectable);
         // if (first < 0)
         // throw new Error("[select prompt] No selectable choices. All choices are disabled.");
-
         return { first, last };
       }, [items]);
 
@@ -171,10 +170,8 @@ export default async <Value, KeyValue = never>(
       });
 
       const message = chalk.italic(theme.style.message(config.message));
-      // let helpTip;
       if (firstRender.current && items.length <= pageSize) {
         firstRender.current = false;
-        // helpTip = theme.style.help("(Use arrow keys)");
       }
 
       if (items.length > 0) {
@@ -210,12 +207,11 @@ export default async <Value, KeyValue = never>(
 
       const keyActionOutput = [styledActionMessage, keyActions].filter(Boolean).join("\n\n");
       const choiceDescription =
-        items.length > 0 && selectedChoice.description
-          ? `\n${chalk.gray(`${selectedChoice.description}`)}`
-          : "";
+        items.length > 0 &&
+        selectedChoice.description &&
+        `${chalk.gray(`${selectedChoice.description}`)}`;
 
       const separator = new Separator(process.stdout.columns).separator;
-
       let lheader = prefix + message;
       if (sufix) {
         const length = process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix);
@@ -224,18 +220,17 @@ export default async <Value, KeyValue = never>(
           " ".repeat(length >= 0 ? length : process.stdout.columns - stringWidth(sufix)) +
           chalk.gray(sufix);
       }
-
-      return [
-        lheader,
-        includeSeperators && separator,
-        page,
-        choiceDescription,
-        includeSeperators && separator,
-        keyActionOutput,
-        ansiEscapes.cursorHide,
-      ]
-        .filter(Boolean)
-        .join("\n");
+      return (
+        [
+          lheader,
+          includeSeperators && separator,
+          page,
+          choiceDescription,
+          includeSeperators && separator + "\n",
+        ]
+          .filter(Boolean)
+          .join("\n") + [keyActionOutput, ansiEscapes.cursorHide].join("")
+      );
     }
   )(options);
 

@@ -14,7 +14,8 @@ import { processMainActions } from "../index.js";
 import { readdir } from "fs/promises";
 import pLimit from "p-limit";
 import { scrapeMedia } from "../service/Scraper.js";
-import { addItem, populate } from "../store/store.js";
+import { addCacheItem, populate } from "../store/store.js";
+import { SingleBar } from "cli-progress";
 
 const { upload_questions, input, scraping_questions } = questions;
 
@@ -24,21 +25,23 @@ export const scrapeAndUpload = async (id?: string) => {
 
   const progressBar = initProgressBar(urls.length);
   const limit = pLimit(20);
-
   let parentId = id;
-  if (name) parentId = await gdrive.createFolder(name, id);
+  // if (name) parentId = await gdrive.createFolder(name, id);
+
+  if (name) {
+    const res = await gdrive.createFolder(name, id);
+    parentId = res.id;
+  }
 
   const processes = urls.map(async (url) => {
     return limit(async () => {
       const stream = await convertUrlToStream(url);
       if (!stream) return;
-
       await gdrive.uploadSingleFile({
         name: extractFileNameFromUrl(url),
         stream,
         parentId,
       });
-
       progressBar.increment();
     });
   });
@@ -46,11 +49,6 @@ export const scrapeAndUpload = async (id?: string) => {
   await Promise.all(processes)
     .then(() => console.log("\nUploading finished"))
     .catch((err) => console.error("Error occurred:", err));
-
-  if (id) {
-    const items = await gdrive.getFolderItems(id);
-    populate(id, items);
-  }
 
   progressBar.stop();
 };
@@ -70,6 +68,7 @@ export const processUploadActions = async (parent?: { name: string; parentId: st
         break;
     }
 
+    cache.del(parent?.parentId || "root");
     parent ? await processFolderActions(parent.parentId) : await processMainActions();
   } catch (err) {
     parent ? await processFolderActions(parent.parentId) : await processMainActions();
@@ -93,50 +92,57 @@ export const handleUploadFolder = async (
   parent?: { name: string; parentId: string }
 ) => {
   const folderName = path.basename(resPath);
-  // const parentId =
-  //   parent && parent.name
-  //     ? await gdrive.createFolder(folderName, parent.parentId)
-  //     : await gdrive.getFolderIdWithName(folderName, parent.parentId);
-  const parentId = await gdrive.createFolder(folderName, parent?.parentId);
+  const { id: parentId } = await gdrive.createFolder(folderName, parent?.parentId);
+
   const res = await readdir(resPath);
   const files = res.reverse();
+  let bar: SingleBar | null = null;
 
-  let progressBar;
   if (files.length > 1) {
-    const bar = initProgressBar(files.length);
-    progressBar = bar;
+    const progressBar = initProgressBar(files.length);
+    bar = progressBar;
   }
 
-  for (let i = 0; i < files.length; i++) {
-    const fileName = files[i];
-    const fullPath = path.join(resPath, fileName);
-    const mimeType = getMimeType(fullPath);
+  const queue: { fullPath: string; name: string; parentId: string }[] = [];
+  const limit = pLimit(20);
+  const batchUpload = files.map(async (fileName, i) => {
+    return limit(async () => {
+      const fullPath = path.join(resPath, fileName);
+      const mimeType = getMimeType(fullPath);
 
-    if (mimeType) {
-      const stream = await convertPathToStream(fullPath);
-      await gdrive.uploadSingleFile({
-        name: fileName,
-        stream,
-        mimeType: mimeType!,
-        parentId,
-      });
-    } else {
-      const isFolder = await isDirectory(fullPath);
-      if (isFolder) await handleUploadFolder(fullPath, { name: fileName, parentId });
-    }
-    if (progressBar) {
-      progressBar.increment();
-      if (i === files.length - 1) {
-        progressBar.stop();
+      if (mimeType) {
+        const stream = await convertPathToStream(fullPath);
+        await gdrive.uploadSingleFile({
+          name: fileName,
+          stream,
+          mimeType: mimeType!,
+          parentId,
+        });
+      } else {
+        const isFolder = await isDirectory(fullPath);
+        if (isFolder) queue.push({ fullPath, name: fileName, parentId });
       }
+      if (bar) bar.increment();
+    });
+  });
+  await Promise.all(batchUpload);
+
+  while (true) {
+    for (const p of queue) {
+      const { fullPath, name, parentId } = p;
+      await handleUploadFolder(fullPath, { name, parentId });
+    }
+    queue.pop();
+    if (queue.length === 0) {
+      if (bar) bar.stop();
+      break;
     }
   }
 };
 
 export const handleUploadFromPath = async (parent?: { name: string; parentId: string }) => {
   try {
-    const { input_path } = questions;
-    const res_path = await input_path("📁 Provide a destination for upload: ");
+    const res_path = await questions.input_path("📁 Provide a destination for upload: ");
     const isDir = await isDirectory(res_path);
 
     if (isDir) {

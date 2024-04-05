@@ -7,14 +7,15 @@ import { processUploadActions } from "./upload.js";
 import { TFile, TFolder } from "../types/types.js";
 import path from "path";
 import { downloadDriveItem, processMultipleItems } from "./batch.js";
-import { getItems } from "../store/store.js";
+import { addCacheItem, getItems, removeCacheItem, updateCacheItem } from "../store/store.js";
 
 const { input_path, areYouSure, folder_questions, input } = questions;
 
 const handleRenameFolder = async (folderName: string, id: string, parentId?: string) => {
   try {
     const new_name = await input(`Rename folder ${chalk.blueBright(folderName)}: `);
-    await gdrive.rename(new_name, id);
+    const renamed = await gdrive.rename(new_name, id);
+    updateCacheItem(parentId, renamed);
     await processFolderActions(id, parentId);
   } catch (error) {
     await processFolderActions(id, parentId);
@@ -24,7 +25,8 @@ const handleRenameFolder = async (folderName: string, id: string, parentId?: str
 const handleCreateFolder = async (id: string, parentId?: string) => {
   try {
     const newName = await input("Enter new folder name: ");
-    await gdrive.createFolder(newName, id);
+    const folder = await gdrive.createFolder(newName, id);
+    addCacheItem(id, folder);
     await processFolderActions(id, parentId);
   } catch (error) {
     await processFolderActions(id, parentId);
@@ -33,8 +35,11 @@ const handleCreateFolder = async (id: string, parentId?: string) => {
 
 const handleDeleteFolder = async (id: string, parentId?: string) => {
   try {
-    const proceed = await areYouSure("Are you sure?");
-    if (proceed) await gdrive.deleteItem(id);
+    const proceed = await areYouSure("Proceed deleting the folder?");
+    if (proceed) {
+      removeCacheItem(parentId, id);
+      await gdrive.deleteItem(id);
+    }
     await processFolderActions(id, parentId);
   } catch (error) {
     await processFolderActions(id, parentId);
@@ -43,27 +48,38 @@ const handleDeleteFolder = async (id: string, parentId?: string) => {
 
 const handleTrashFolder = async (id: string, parentId?: string) => {
   try {
-    const proceed = await areYouSure("Are you sure?");
-    if (proceed) await gdrive.moveToTrash(id);
+    const proceed = await areYouSure(
+      "Proceed moving the folder to trash? (You will be able to restore it in the next 30 days.)"
+    );
+    if (proceed) {
+      removeCacheItem(parentId, id);
+      await gdrive.moveToTrash(id);
+    }
     await processFolderActions(id, parentId);
   } catch (error) {
     await processFolderActions(id, parentId);
   }
 };
 
-export const selectItemToMove = async (id?: string): Promise<TFolder> => {
+export const selectFolder = async (id?: string): Promise<TFolder> => {
   const allFolders = await gdrive.getDriveFolders(id);
   const selectedFolder = await questions.move_questions(allFolders);
   return selectedFolder;
 };
 
-const handleMoveFolder = async (id: string) => {
+const handleMoveFolder = async (id: string, parentId?: string) => {
   try {
-    const selected = await selectItemToMove(id);
+    const selected = await selectFolder(id);
+    const item = await gdrive.getItem(id);
+
+    addCacheItem(selected.id, item);
+    removeCacheItem(parentId, id);
     await gdrive.moveFile(id, selected.id);
-    await processFolderActions(id);
+
+    parentId ? await processFolderActions(parentId) : await processMainActions();
   } catch (error) {
-    await processFolderActions(id);
+    console.log("Error while moving the folder", error);
+    parentId ? await processFolderActions(parentId) : await processMainActions();
   }
 };
 
@@ -108,11 +124,9 @@ export const processFolderActions = async (id: string, parentId?: string) => {
         break;
       case "UPLOAD":
         await processUploadActions({ name: folderName, parentId: id });
-        // await processFolderActions({ id, parentId });
         break;
       case "ITEM_OPERATIONS":
         await processMultipleItems(items, id);
-        // await processFolderActions({ id, parentId });
         break;
       case "DOWNLOAD":
         await handleDownloadFolder(items, folderName, id, parentId);
@@ -124,8 +138,7 @@ export const processFolderActions = async (id: string, parentId?: string) => {
         await handleTrashFolder(id, parentId);
         break;
       case "MOVE":
-        await handleMoveFolder(id);
-        console.log("Move");
+        await handleMoveFolder(id, parentId);
         break;
       default:
         if (typeof answer !== "string") {

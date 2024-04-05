@@ -116,6 +116,7 @@ export class ClientQuestions {
         { name: "Recover selected items", value: "RECOVER" },
         { name: "Delete selected items", value: "DELETE" },
       ],
+      sufix: chalk.gray("Press <ESC> to return"),
     });
     if (action == "EVENT_INTERRUPTED") throw new Error(action);
     return { selectedItems: selected, action };
@@ -142,6 +143,7 @@ export class ClientQuestions {
           description: "Scrape content from webpage, such as images, videos, pdfs",
         },
       ],
+      sufix: chalk.gray("Press <ESC> to return"),
     });
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
     return answer;
@@ -240,6 +242,7 @@ export class ClientQuestions {
           key: "n",
         },
       ],
+      sufix: chalk.gray("Press <ESC> to return"),
     });
 
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
@@ -281,6 +284,7 @@ export class ClientQuestions {
             "Information about file. Such as size, name, id, mimeType, date of file creation",
         },
       ],
+      sufix: chalk.gray("Press <ESC> to return"),
     });
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
     return answer;
@@ -297,6 +301,7 @@ export class ClientQuestions {
         },
         { name: "Delete forever", value: "DELETE" },
       ],
+      sufix: chalk.gray("Press <ESC> to return"),
     });
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
     return answer;
@@ -311,6 +316,7 @@ export class ClientQuestions {
         { name: "Download", value: "DOWNLOAD" },
         { name: "Move", value: "MOVE" },
       ],
+      sufix: chalk.gray("Press <ESC> to return"),
     });
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
     return answer;
@@ -334,10 +340,8 @@ export class ClientQuestions {
           console.log(`\n${chalk.red("Input is invalid. URL input is needed.")}`);
           return false;
         }
-        // }
       },
     });
-
     const { bool } = await inquirer.prompt([
       {
         message: "Do you want to create new folder for scraped files?",
@@ -345,7 +349,6 @@ export class ClientQuestions {
         name: "bool",
       },
     ]);
-
     let name: string | null = null;
     if (bool) {
       const res = await inquirer.prompt({
@@ -355,7 +358,6 @@ export class ClientQuestions {
       });
       name = res.name;
     }
-
     const durationType = await interactiveList<"LIMIT" | "FULL">({
       message: "Select: ",
       choices: [
@@ -370,9 +372,9 @@ export class ClientQuestions {
           description: "Full scrape. Scrape all URLs from page.",
         },
       ],
+      sufix: null,
       includeSeperators: false,
     });
-
     let duration: number | null = null;
     if (durationType === "LIMIT") {
       const res = await inquirer.prompt({
@@ -419,6 +421,7 @@ export class ClientQuestions {
     const res = await interactiveList({
       message: "Where do you want to move the item: ",
       choices: folders.map((x) => ({ ...x, name: x.path, value: x })),
+      sufix: chalk.gray("Press <ESC> to return"),
     });
     if (res === "EVENT_INTERRUPTED") throw new Error(res);
     return res;

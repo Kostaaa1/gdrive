@@ -6,6 +6,7 @@ import open from "open";
 import { isExtensionValid } from "../utils/utils.js";
 import { TFile } from "../types/types.js";
 import path from "path";
+import { removeCacheItem, updateCacheItem } from "../store/store.js";
 
 const { selected_item, rename, input_path, areYouSure } = questions;
 
@@ -24,18 +25,27 @@ export const processSelectedFile = async (file: TFile, folder?: { name: string; 
 
     switch (fileAnswer) {
       case "DELETE":
-        const proceed = await areYouSure("Are you sure?");
-        if (proceed) await gdrive.deleteItem(id);
+        const proceed = await areYouSure("Proceed deleting the item?");
+        if (proceed) {
+          removeCacheItem(folder?.id, file.id);
+          await gdrive.deleteItem(id);
+        }
         folder ? await processFolderActions(folder.id) : await processMainActions();
         break;
       case "TRASH":
-        const proceed1 = await areYouSure("Are you sure?");
-        if (proceed1) await gdrive.moveToTrash(id);
+        const proceed1 = await areYouSure(
+          "Proceed moving the item to trash? (You will be able to restore it in the next 30 days.)"
+        );
+        if (proceed1) {
+          removeCacheItem(folder?.id, file.id);
+          await gdrive.moveToTrash(id);
+        }
         folder ? await processFolderActions(folder.id) : await processMainActions();
         break;
       case "RENAME":
         const newName = await rename(name);
-        await gdrive.rename(newName, id);
+        const renamedFile = await gdrive.rename(newName, id);
+        updateCacheItem(folder?.id, renamedFile);
         folder ? await processFolderActions(folder.id) : await processMainActions();
         break;
       case "INFO":

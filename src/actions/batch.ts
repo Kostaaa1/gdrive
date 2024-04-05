@@ -1,10 +1,11 @@
 import pLimit from "p-limit";
 import { gdrive, questions } from "../config/config.js";
 import { processMainActions } from "../index.js";
-import { processFolderActions, selectItemToMove } from "./folder.js";
+import { processFolderActions, selectFolder } from "./folder.js";
 import { createFolder, initProgressBar, isGdriveFolder, parsePathName } from "../utils/utils.js";
 import { ItemOperations, TFile } from "../types/types.js";
 import path from "path";
+import { addCacheItem, removeCacheItem } from "../store/store.js";
 
 export const downloadDriveItem = async (item: TFile, folderPath: string) => {
   const { id, mimeType, name } = item;
@@ -35,7 +36,7 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
     const executeOperation = async (
       action: ItemOperations,
       actionFn: (item: TFile) => Promise<void>,
-      limitNumber = 4
+      concurrencyLimit = 4
     ) => {
       let proceed = true;
       if (action === "DELETE" || action === "TRASH") {
@@ -44,7 +45,7 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
       if (!proceed) return;
 
       const progressBar = initProgressBar(selected.length);
-      const limit = pLimit(limitNumber);
+      const limit = pLimit(concurrencyLimit);
       const processes = selected.map(async (item) => {
         return limit(async () => {
           await actionFn(item);
@@ -57,10 +58,12 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
 
     switch (operation) {
       case "MOVE":
-        const { id } = await selectItemToMove();
+        const { id } = await selectFolder();
         await executeOperation(
           "MOVE",
           async (selected) => {
+            addCacheItem(id, selected);
+            removeCacheItem(parentId, selected.id);
             await gdrive.moveFile(selected.id, id);
           },
           10
@@ -80,12 +83,14 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
       case "TRASH":
         await executeOperation("TRASH", async (selected) => {
           await gdrive.moveToTrash(selected.id);
+          removeCacheItem(parentId, id);
         });
         console.log("\nMoving to trash finished");
         break;
       case "DELETE":
-        await executeOperation("DELETE", async (selected) => {
-          await gdrive.deleteItem(selected.id);
+        await executeOperation("DELETE", async ({ id }) => {
+          await gdrive.deleteItem(id);
+          removeCacheItem(parentId, id);
         });
         console.log("\nDelete finished");
         break;

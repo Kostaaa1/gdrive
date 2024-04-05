@@ -198,7 +198,7 @@ async function findValidFile(dir: string, base: string) {
 export const stop = (ms: number = 500) => new Promise((res) => setTimeout(res, ms));
 
 export const isExtensionValid = (p: string): Boolean => {
-  const extensionRegex = /\.(mp4|jpg|jpeg|png|gif|pdf|wav|mp3|docx)/i;
+  const extensionRegex = /\.(mp4|jpg|jpeg|png|gif|pdf|svg|wav|mp3|docx)/i;
   return extensionRegex.test(p);
 };
 
@@ -302,7 +302,6 @@ export async function getTotalBytesFromPlaylist(url: string) {
   console.log(response.data);
 
   const playlistText = response.data;
-  // Assuming each line in the playlist starting with "http" is a segment URL
   const segmentUrls = playlistText.split("\n").filter((line: any) => line.startsWith("http"));
   let totalBytes = 0;
   for (const segmentUrl of segmentUrls) {

@@ -1,7 +1,8 @@
 import { Readable } from "stream";
 
 export type TFile = { name: string; id: string; mimeType: string };
-export type TFolder = { name: string; id: string; path: string };
+// export type TFolder = { name: string; id: string; path: string };
+export type TFolder = TFile & { path: string };
 export type TUploadFile = {
   name: string;
   stream: Readable;
