@@ -1,4 +1,5 @@
-import { cache } from "../config/config.js";
+import NodeCache from "node-cache";
+import { cache, gdrive } from "../config/config.js";
 import { TFile } from "../types/types.js";
 
 export const getItems = async (key: string, action: () => Promise<TFile[]>): Promise<TFile[]> => {
@@ -40,5 +41,18 @@ export const removeCacheItem = (key: string = "root", id: string) => {
     const values: TFile[] = JSON.parse(data);
     const filtered = values.filter((x) => x.id !== id);
     cache.set(key, JSON.stringify(filtered));
+  }
+};
+
+export const getStorageSize = async () => {
+  const expiryCache = new NodeCache({ stdTTL: 240 });
+  const size = expiryCache.get<string>("storageSize");
+
+  if (!size) {
+    const storageSizeMsg = await gdrive.getDriveStorageSize();
+    expiryCache.set("storageSize", JSON.stringify(storageSizeMsg));
+    return storageSizeMsg;
+  } else {
+    return JSON.parse(size);
   }
 };

@@ -7,13 +7,13 @@ import { processTrashActions } from "./actions/trash.js";
 import open from "open";
 import { processUploadActions } from "./actions/upload.js";
 import { processMultipleItems } from "./actions/batch.js";
-import { addCacheItem, getItems } from "./store/store.js";
+import { addCacheItem, getItems, getStorageSize } from "./store/store.js";
 
 const { input_path, input } = questions;
 
 export const processMainActions = async () => {
   try {
-    const storageSizeMsg = await gdrive.getDriveStorageSize();
+    const storageSizeMsg = await getStorageSize();
     const items = await getItems("root", () => gdrive.getRootItems());
     const answer = await questions.main_questions(items, storageSizeMsg);
 
