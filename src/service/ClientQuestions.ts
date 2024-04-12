@@ -12,15 +12,22 @@ import {
 } from "../types/types.js";
 import chalk from "chalk";
 import inquirer from "inquirer";
-import { isExtensionValid, isGdriveFolder, notify } from "../utils/utils.js";
+import {
+  isExtensionValid,
+  isGdriveFolder,
+  notify,
+  parseItemsForQuestion,
+} from "../utils/utils.js";
 import InterruptedPrompt from "inquirer-interrupted-prompt";
-// @ts-ignore
-import { PathPrompt } from "inquirer-path";
+
 import interactiveList from "../custom/InteractiveList.mjs";
 import { existsSync } from "fs";
 import checkboxPrompt from "../custom/Checkbox.mjs";
 import inquirerPressToContinue from "inquirer-press-to-continue";
 import type { KeyDescriptor } from "inquirer-press-to-continue";
+import { updateHistoryId } from "../store/store.js";
+// @ts-ignore
+import { PathPrompt } from "inquirer-path";
 
 inquirer.registerPrompt("path", PathPrompt);
 inquirer.registerPrompt("press-to-continue", inquirerPressToContinue);
@@ -28,9 +35,15 @@ InterruptedPrompt.fromAll(inquirer);
 
 export class ClientQuestions {
   public async input_path(message: string): Promise<string> {
-    const { path } = await inquirer.prompt([
+    const res = await inquirer.prompt([
       { type: "path", name: "path", message, default: process.cwd() },
     ]);
+
+    let path = res.path;
+    if (path === process.cwd()) {
+      const ask = await this.areYouSure(`You provided the root path? ${process.cwd()}. Proceed?`);
+      if (!ask) path = await this.input_path(message);
+    }
 
     if (!existsSync(path)) {
       await notify(
@@ -88,14 +101,10 @@ export class ClientQuestions {
     console.clear();
     const selected = await checkboxPrompt({
       message,
-      choices: items.map(
-        (item) =>
-          item && {
-            ...item,
-            name: `${item.name} ${isGdriveFolder(item.mimeType) ? chalk.gray("(folder)") : ""}`,
-            value: item,
-          }
-      ),
+      choices: items.map((file) => ({
+        name: `${file.name} ${isGdriveFolder(file.mimeType) ? chalk.gray("(folder)") : ""}`,
+        value: file,
+      })),
     });
 
     if (selected.length === 0) {
@@ -125,7 +134,7 @@ export class ClientQuestions {
   public async upload_questions(): Promise<UploadActions> {
     console.clear();
     const answer = await interactiveList<UploadActions>({
-      message: "Your root folder/files: ",
+      message: "Choose method of upload: ",
       choices: [
         {
           name: "Upload from local machine",
@@ -151,18 +160,14 @@ export class ClientQuestions {
 
   public async main_questions(
     items: TFile[],
-    storageSizeMsg: string | undefined
+    storageSizeMsg?: string,
+    historyId?: number
   ): Promise<TFile | MainActions> {
     console.clear();
     const answer = await interactiveList<TFile, MainActions>({
       message: "Your root folder/files: ",
       sufix: storageSizeMsg,
-      choices: [
-        ...items.map((file) => ({
-          name: `${file.name} ${isGdriveFolder(file.mimeType) ? chalk.gray("(folder)") : ""}`,
-          value: file,
-        })),
-      ],
+      choices: parseItemsForQuestion(items),
       actions: [
         { name: "Manage Trash", value: "TRASH", key: "t" },
         {
@@ -196,18 +201,24 @@ export class ClientQuestions {
           key: "x",
         },
       ],
+      historyId,
     });
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
+    if (typeof answer === "object") {
+      const id = items.findIndex((x) => x.id === answer.id);
+      updateHistoryId("root", id);
+    }
     return answer;
   }
 
   public async folder_questions(
     files: TFile[],
-    folderName: string
+    folderName: string,
+    folderId: string,
+    historyId: number
   ): Promise<FolderActions | TFile> {
     console.clear();
     const folderMsg = `${chalk.blueBright.underline(folderName)}`;
-
     const message =
       files.length > 1
         ? `Choose file or choose the action for folder ${folderMsg}: `
@@ -217,12 +228,7 @@ export class ClientQuestions {
 
     const answer = await interactiveList<TFile, FolderActions>({
       message,
-      choices: [
-        ...files.map((file) => ({
-          name: `${file.name} ${isGdriveFolder(file.mimeType) ? chalk.gray("(folder)") : ""}`,
-          value: file,
-        })),
-      ],
+      choices: parseItemsForQuestion(files),
       actionMsg: "Folder actions:",
       actions: [
         {
@@ -242,10 +248,16 @@ export class ClientQuestions {
           key: "n",
         },
       ],
+      historyId,
       sufix: chalk.gray("Press <ESC> to return"),
     });
-
     if (answer === "EVENT_INTERRUPTED") throw new Error(answer);
+    if (typeof answer === "object") {
+      updateHistoryId(
+        folderId,
+        files.findIndex((x) => x.id === answer.id)
+      );
+    }
     return answer;
   }
 
@@ -263,8 +275,9 @@ export class ClientQuestions {
         {
           name: "Trash",
           value: "TRASH",
-          description:
-            "Moves the file to the trash. You will be able to recover it in the next 30 days.",
+          description: `Moves the file to the trash. ${chalk.gray(
+            "(You will be able to recover it in the next 30 days)"
+          )}`,
         },
         {
           name: "Download",
@@ -412,6 +425,7 @@ export class ClientQuestions {
       await notify("No items selected, make sure you have selected items in order to proceed.");
       await selectMedia();
     }
+
     if (durationType === "EVENT_INTERRUPTED") throw new Error(durationType);
     return { url, duration: duration ? duration * 1000 : null, name, types: selected };
   }

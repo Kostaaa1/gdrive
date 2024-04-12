@@ -3,7 +3,7 @@ import { gdrive, questions } from "../config/config.js";
 import { processMainActions } from "../index.js";
 import { processFolderActions, selectFolder } from "./folder.js";
 import { createFolder, initProgressBar, isGdriveFolder, parsePathName } from "../utils/utils.js";
-import { ItemOperations, TFile } from "../types/types.js";
+import { TFile } from "../types/types.js";
 import path from "path";
 import { addCacheItem, removeCacheItem } from "../store/store.js";
 
@@ -11,8 +11,9 @@ export const downloadDriveItem = async (item: TFile, folderPath: string) => {
   const { id, mimeType, name } = item;
   if (isGdriveFolder(mimeType)) {
     const files = await gdrive.getFolderItems(id);
-    const progressBar = initProgressBar(files.length);
+    const { progressBar } = initProgressBar(files.length);
     const newPath = await createFolder(path.join(folderPath, name));
+
     const downloadPromises = files.map(async (file) => {
       await downloadDriveItem(file, newPath);
       progressBar.increment();
@@ -34,24 +35,23 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
     };
 
     const executeOperation = async (
-      action: ItemOperations,
       actionFn: (item: TFile) => Promise<void>,
-      concurrencyLimit = 4
+      concurrencyLimit = 20
     ) => {
-      let proceed = true;
-      if (action === "DELETE" || action === "TRASH") {
-        proceed = await questions.areYouSure(proceedMsgs[action]);
-      }
-      if (!proceed) return;
-
-      const progressBar = initProgressBar(selected.length);
+      const {
+        progressBar,
+        cancel: { value },
+      } = initProgressBar(selected.length);
       const limit = pLimit(concurrencyLimit);
       const processes = selected.map(async (item) => {
         return limit(async () => {
+          if (value) return;
+
           await actionFn(item);
           progressBar.increment();
         });
       });
+
       await Promise.all(processes);
       progressBar.stop();
     };
@@ -59,42 +59,38 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
     switch (operation) {
       case "MOVE":
         const { id } = await selectFolder();
-        await executeOperation(
-          "MOVE",
-          async (selected) => {
-            addCacheItem(id, selected);
-            removeCacheItem(parentId, selected.id);
-            await gdrive.moveFile(selected.id, id);
-          },
-          10
-        );
-        console.log("\nMoving finished");
+        await executeOperation(async (selected) => {
+          addCacheItem(id, selected);
+          removeCacheItem(parentId, selected.id);
+          await gdrive.moveFile(selected.id, id);
+        });
         break;
       case "DOWNLOAD":
-        await executeOperation(
-          "DOWNLOAD",
-          async (item) => {
-            if (!cpath) return;
-            await downloadDriveItem(item, cpath);
-          },
-          selected.length
-        );
+        await executeOperation(async (item) => {
+          if (!cpath) return;
+          await downloadDriveItem(item, cpath);
+        }, selected.length);
         break;
       case "TRASH":
-        await executeOperation("TRASH", async (selected) => {
+        const p = await questions.areYouSure(proceedMsgs[operation]);
+        if (!p) break;
+
+        await executeOperation(async (selected) => {
+          removeCacheItem(parentId, selected.id);
           await gdrive.moveToTrash(selected.id);
-          removeCacheItem(parentId, id);
         });
-        console.log("\nMoving to trash finished");
         break;
       case "DELETE":
-        await executeOperation("DELETE", async ({ id }) => {
-          await gdrive.deleteItem(id);
-          removeCacheItem(parentId, id);
+        const proceed = await questions.areYouSure(proceedMsgs[operation]);
+        if (!proceed) break;
+
+        await executeOperation(async (selected) => {
+          removeCacheItem(parentId, selected.id);
+          await gdrive.deleteItem(selected.id);
         });
-        console.log("\nDelete finished");
         break;
     }
+
     parentId ? await processFolderActions(parentId) : await processMainActions();
   } catch (error) {
     parentId ? await processFolderActions(parentId) : await processMainActions();

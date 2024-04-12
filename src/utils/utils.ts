@@ -1,15 +1,17 @@
 import axios from "axios";
-import internal, { Readable } from "stream";
+import internal, { PassThrough, Readable } from "stream";
 import fs from "fs";
 import mime from "mime";
 import { exec } from "child_process";
 import open from "open";
 import path from "path";
-import { readdir, access, mkdir } from "fs/promises";
+import { readdir, stat, access, mkdir } from "fs/promises";
 import chalk from "chalk";
 import { Presets, SingleBar } from "cli-progress";
-import { ScrapingOpts, StorageQuota } from "../types/types.js";
-import puppeteer from "puppeteer";
+import { StorageQuota, TFile } from "../types/types.js";
+import { Choice } from "../custom/PendingPromise.mjs";
+import ffmpeg from "fluent-ffmpeg";
+import { emitKeypressEvents } from "readline";
 
 export function formatDate(date: string) {
   const formattedDate = new Date(date).toLocaleString("en-US", {
@@ -159,35 +161,35 @@ export async function getUrlMimeType(url: string): Promise<string | undefined> {
 
 export async function convertUrlToStream(url: string): Promise<internal.Readable | null> {
   try {
+    const parsed = new URL(url);
+    if (parsed.pathname.endsWith(".m3u8")) {
+      const stream = new PassThrough();
+
+      ffmpeg(url)
+        .outputOptions(["-c copy", "-preset ultrafast", "-f mpegts"])
+        .pipe(stream, { end: true });
+
+      return stream;
+    }
+
     const res = await axios.get(url, { responseType: "stream" });
     return res.status === 200 ? res.data : [];
   } catch (error) {
+    console.log(error);
     return null;
   }
 }
 
 export async function convertPathToStream(filePath: string): Promise<internal.Readable> {
-  const stream = new Readable();
-  const fileStream = fs.createReadStream(filePath);
-
-  fileStream
-    .on("data", (chunk) => {
-      if (!stream.push(chunk)) {
-        fileStream.pause();
-      }
-    })
-    .on("end", () => {
-      stream.push(null);
-    })
-    .on("error", (err) => {
-      stream.emit("error", err);
+  return new Promise((resolve, reject) => {
+    const stream = fs.createReadStream(filePath);
+    stream.on("open", () => {
+      resolve(stream);
     });
-
-  stream._read = () => {
-    fileStream.resume();
-  };
-
-  return stream;
+    stream.on("error", (err) => {
+      reject(err.message);
+    });
+  });
 }
 
 async function findValidFile(dir: string, base: string) {
@@ -218,52 +220,56 @@ export function extractFileNameFromUrl(url: string) {
   }
 
   fileName = decodeURIComponent(fileName);
+  if (fileName.endsWith(".m3u8")) fileName = fileName.replace(".m3u8", ".mp4");
   return fileName;
 }
 
 export async function openFile(filePath: string) {
-  const dir = path.dirname(filePath);
-  let base = path.basename(filePath);
+  try {
+    const dir = path.dirname(filePath);
+    let base = path.basename(filePath);
 
-  const isValid = isExtensionValid(base);
+    const isValid = isExtensionValid(base);
+    if (!isValid) {
+      const validBase = await findValidFile(dir, base);
+      if (validBase) {
+        base = validBase;
+      } else {
+        console.log("Path invalid. Make sure you are using the existing file path.");
+        return;
+      }
+    }
 
-  if (!isValid) {
-    const validBase = await findValidFile(dir, base);
-    if (validBase) {
-      base = validBase;
-    } else {
+    const newPath = path.join(dir, base);
+    if (!fs.existsSync(dir) || !fs.existsSync(newPath)) {
       console.log("Path invalid. Make sure you are using the existing file path.");
       return;
     }
-  }
 
-  const newPath = path.join(dir, base);
-  if (!fs.existsSync(dir) || !fs.existsSync(newPath)) {
-    console.log("Path invalid. Make sure you are using the existing file path.");
-    return;
-  }
-
-  switch (process.platform) {
-    case "win32":
-      await open(newPath);
-      break;
-    case "linux":
-      try {
-        exec(`xdg-open "${newPath}"`, (error, stdout, stderr) => {
-          if (error) {
-            console.error(`Error: ${error.message}`);
-            return;
-          }
-        });
-      } catch (error) {
-        console.error(
-          "Failed to open with xdg-open, check if you have se the default media player in your linux environment"
-        );
-      }
-      break;
-    default:
-      console.log("Unsupported platform for automatic file opening.");
-      break;
+    switch (process.platform) {
+      case "win32":
+        await open(newPath);
+        break;
+      case "linux":
+        try {
+          exec(`xdg-open "${newPath}"`, (error, stdout, stderr) => {
+            if (error) {
+              console.error(`Error: ${error.message}`);
+              return;
+            }
+          });
+        } catch (error) {
+          console.error(
+            "Failed to open with xdg-open, check if you have se the default media player in your linux environment"
+          );
+        }
+        break;
+      default:
+        console.log("Unsupported platform for automatic file opening.");
+        break;
+    }
+  } catch (error) {
+    console.log("ERror while opening the file: ", error);
   }
 }
 
@@ -328,29 +334,40 @@ export function base64ToStream(base64str: string) {
   }
   const byteArray = new Uint8Array(byteNumbers);
   const blob = new Blob([byteArray], { type: "image/jpeg" });
-
   return blob;
 }
 
-// export function handleCancelOnKey(cancel: { value: boolean }, cb: () => void) {
-//   const { stdin } = process;
-//   const cancelHandler = (key: any) => {
-//     const keyPressed = key.toString();
-//     if (keyPressed === "\u001b") {
-//       cancel.value = true;
-//       console.log("\nProcess terminated, proceeding the action...");
-//       cb();
-//       stdin.setRawMode(false);
-//       stdin.pause();
+export const parseItemsForQuestion = <Value>(items: TFile[]): Choice<Value>[] => {
+  // @ts-ignore
+  return items.map((file) => ({
+    name: `${file.name} ${isGdriveFolder(file.mimeType) ? chalk.gray("(folder)") : ""}`,
+    value: file,
+  }));
+};
 
-//       stdin.removeListener("data", cancelHandler);
-//     }
-//   };
-//   stdin.on("data", cancelHandler);
-// }
+export function initProgressBar(
+  itemsLength: number,
+  message: string = "Progress"
+): { progressBar: SingleBar; cancel: { value: boolean } } {
+  const cancel = { value: false };
 
-export function initProgressBar(itemsLength: number, message: string = ""): SingleBar {
-  const msg = `${message} Progress [{bar}] {percentage}% | {value}/{total}`;
+  emitKeypressEvents(process.stdin);
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+
+  const handleKeypress = (_: any, key: any) => {
+    if (key && key.name === "escape") {
+      cancel.value = true;
+      progressBar.stop();
+      console.log(chalk.gray("\nOperation terminated."));
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      process.stdin.removeListener("keypress", handleKeypress);
+    }
+  };
+  process.stdin.on("keypress", handleKeypress);
+
+  const msg = `${message} [{bar}] {percentage}% | {value}/{total}`;
   const progressBar = new SingleBar(
     {
       format: msg,
@@ -358,6 +375,9 @@ export function initProgressBar(itemsLength: number, message: string = ""): Sing
     Presets.rect
   );
 
+  progressBar.on("stop", () => {
+    process.stdin.removeListener("keypress", handleKeypress);
+  });
   progressBar.start(itemsLength, 0);
-  return progressBar;
+  return { progressBar, cancel };
 }

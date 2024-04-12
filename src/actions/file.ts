@@ -7,6 +7,7 @@ import { isExtensionValid } from "../utils/utils.js";
 import { TFile } from "../types/types.js";
 import path from "path";
 import { removeCacheItem, updateCacheItem } from "../store/store.js";
+import chalk from "chalk";
 
 const { selected_item, rename, input_path, areYouSure } = questions;
 
@@ -34,7 +35,9 @@ export const processSelectedFile = async (file: TFile, folder?: { name: string; 
         break;
       case "TRASH":
         const proceed1 = await areYouSure(
-          "Proceed moving the item to trash? (You will be able to restore it in the next 30 days.)"
+          `Proceed moving the item to trash? ${chalk.gray(
+            "(You will be able to restore it in the next 30 days.)"
+          )}`
         );
         if (proceed1) {
           removeCacheItem(folder?.id, file.id);

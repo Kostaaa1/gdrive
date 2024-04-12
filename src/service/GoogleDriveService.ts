@@ -134,14 +134,21 @@ export class GoogleDriveService {
     }
   }
 
-  public async recoverTrashItem(fileId: string): Promise<void> {
+  public async recoverTrashItem(fileId: string): Promise<string> {
     try {
-      await this.drive_client.files.update({
+      const res = await this.drive_client.files.update({
         fileId,
         requestBody: { trashed: false },
+        fields: "parents",
       });
+
+      if (!res.data.parents || res.data.parents.length === 0) {
+        throw new Error(`Recover of item failed, maybe parents missing?`);
+      }
+
+      return res.data.parents![0];
     } catch (err) {
-      console.log(err);
+      throw new Error(`Error while recovering the item ${err}`);
     }
   }
 
@@ -173,29 +180,28 @@ export class GoogleDriveService {
 
   public async getDriveFolders(filterId?: string) {
     const folders: TFolder[] = [{ id: "root", name: "root", path: "/", mimeType: "" }];
-
     const getSubFolders = async (folderId: string, prevPath: string = "") => {
       const res = await this.drive_client.files.list({
         q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
         fields: "files(id, name, mimeType)",
       });
       const files = res.data.files!;
-      const limit = pLimit(4);
 
+      const limit = pLimit(50);
       const processes = files.map((file) => {
         return limit(async () => {
           const { id, name, mimeType } = file;
-          if (!file || !id || !name || !mimeType || id === filterId) return;
+          if (id === filterId) return;
           const newPath = prevPath + "/" + name;
-          folders.push({ id, name, mimeType, path: newPath });
-          await getSubFolders(id, newPath);
+          await getSubFolders(id!, newPath);
+          folders.push({ id: id!, name: name!, mimeType: mimeType!, path: newPath });
         });
       });
       await Promise.all(processes);
     };
 
     await getSubFolders("root");
-    return folders;
+    return folders.sort((a, b) => a.path.localeCompare(b.path));
   }
 
   /**

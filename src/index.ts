@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { cache, gdrive, questions } from "./config/config.js";
+import { gdrive, questions } from "./config/config.js";
 import { isGdriveFolder, openFile } from "./utils/utils.js";
 import { processFolderActions } from "./actions/folder.js";
 import { processSelectedFile } from "./actions/file.js";
@@ -8,15 +8,13 @@ import open from "open";
 import { processUploadActions } from "./actions/upload.js";
 import { processMultipleItems } from "./actions/batch.js";
 import { addCacheItem, getItems, getStorageSize } from "./store/store.js";
-
 const { input_path, input } = questions;
 
 export const processMainActions = async () => {
   try {
     const storageSizeMsg = await getStorageSize();
-    const items = await getItems("root", () => gdrive.getRootItems());
-    const answer = await questions.main_questions(items, storageSizeMsg);
-
+    const { historyId, items } = await getItems("root", () => gdrive.getRootItems());
+    const answer = await questions.main_questions(items, storageSizeMsg, historyId);
     switch (answer) {
       case "ITEM_OPERATIONS":
         await processMultipleItems(items);
@@ -33,7 +31,7 @@ export const processMainActions = async () => {
         break;
       case "OPEN":
         const filePath = await input_path("Enter the path for the file you want to preview: ");
-        if (filePath) await openFile(filePath);
+        await openFile(filePath);
         await processMainActions();
         break;
       case "TRASH":
@@ -63,7 +61,80 @@ export const processMainActions = async () => {
   await gdrive.authorize();
   await processMainActions();
   /////////////////////////////
-  //   "https://www.twitch.tv/mellooow_/clip/CrazyBlueCookiePermaSmug-gOKwhWbVkl7DFo4G?filter=clips&range=30d&sort=time";
+
+  // const res = await axios.get("https://kick.com/video/a505540c-69f0-41af-a1d6-2fdf66e763df");
+  // const url = "https://kick.com/6741eecb-edf3-47d8-867c-83ea336946e7";
+  // const urls = await scrapeMedia(url, ["VIDEO"], null);
+  // console.log(urls);
+  // const media = new Twitch();
+  // const s = await media.getKickVIdeo(url);
+  // console.log(s);
+  // Step 1: Listen for Key Presses
+  // const id = await gdrive.getFolderIdWithName("Water");
+  // await gdrive.deleteItem(id);
+  // const { duration, name, types, url } = await questions.scraping_questions();
+  // let parentId: string;
+  // if (name) {
+  //   const res = await gdrive.createFolder(name);
+  //   parentId = res.id;
+  // }
+  // const urls = await scrapeMedia(url, types, duration);
+  // const { progressBar, cancelled } = initProgressBar(urls.length);
+  // const limit = pLimit(50);
+  // const processes = urls.map((url) => {
+  //   try {
+  //     return limit(async () => {
+  //       if (cancelled.value) return;
+  //       const stream = await convertUrlToStream(url);
+  //       if (stream) {
+  //         await gdrive.uploadSingleFile({ name: extractFileNameFromUrl(url), stream, parentId });
+  //         if (!cancelled.value) progressBar.increment();
+  //       }
+  //     });
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  // });
+  // await Promise.all(processes);
+  // const url = "https://el.phncdn.com/pics/gifs/018/886/621/18886621a.mp4";
+  // const res = await axios.get(url, { responseType: "stream" });
+  // await gdrive.uploadSingleFile({ name: "Test.mp4", stream: res.data });
+  // const urls = await scrapeMedia(url, ["IMAGE", "VIDEO"], 16000);
+  // console.log(urls);
+  // const ulr =
+  //   "https://v.redd.it/yla8tn8kb0nc1/HLSPlaylist.m3u8?f=hd%2CsubsAll%2ChlsSpecOrder&v=1&a=1715124847%2CODljOTViMzVkZjNiMjNlMzAyYzQ2OWNkM2FlOWZjMTNlOWYyMTYyMGFjZmZkZTUyMGZlNjYyZWZkYjUyMmExZA%3D%3D";
+  // const stream = new PassThrough();
+  // ffmpeg(ulr)
+  //   .outputOptions(["-c copy", "-preset ultrafast", "-f mpegts"])
+  //   .pipe(stream, { end: true });
+  //   await gdrive.
+  // const parsed = new URL(url);
+  // if (parsed.pathname.endsWith(".m3u8")) {
+  //   const stream = new PassThrough();
+  //   // const { data: m3u8 } = await axios.get(url);
+  //   // console.log(m3u8);
+  //   // const outputPath = "./tmp/Cinna.mp4";
+  //   ffmpeg(url)
+  //     .format("mp4")
+  //     .outputOptions(["-c copy", "-preset ultrafast", "-f mpegts"])
+  //     .on("progress", (progress) => {
+  //       console.log("Progress ", progress.chunk + "%");
+  //     })
+  //     .on("end", () => {
+  //       console.log("Conversion finished!");
+  //     })
+  //     .on("error", () => {
+  //       console.log("Conversion failed!");
+  //     })
+  //     .pipe(stream, { end: true });
+  //   await gdrive.uploadSingleFile({ name: "Reddit.mp4", stream });
+  // }
+  // const startTime = process.hrtime();
+  // const url = "https://dksoakdksaodkosa.com";
+  // const urls = await scrapeMedia(url, ["IMAGE"], 24000);
+  // const endTime = process.hrtime(startTime);
+  // console.log("Elapsed: ", endTime[0] + endTime[1] / 1e9, urls.length);
+  // "https://www.twitch.tv/mellooow_/clip/CrazyBlueCookiePermaSmug-gOKwhWbVkl7DFo4G?filter=clips&range=30d&sort=time";
   // const { id, mimeType, stream, username, title } = await twitch.getTwitchVideo(url);
   // await gdrive.uploadSingleFile({ name: title, stream, mimeType });
   // console.log(data);

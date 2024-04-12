@@ -15,6 +15,7 @@ declare module "@inquirer/core" {
 }
 
 import stringWidth from "string-width";
+import ora, { Ora } from "ora";
 import type { CancelablePromise, Context, PartialDeep, Prettify } from "@inquirer/type";
 import {
   createPrompt,
@@ -35,6 +36,9 @@ import { Separator } from "./Separator.mjs";
 import chalk from "chalk";
 import figures from "figures";
 import ansiEscapes from "ansi-escapes";
+import { TCached } from "../store/store.js";
+import { TFile } from "../types/types.js";
+import { parseItemsForQuestion } from "../utils/utils.js";
 
 const selectTheme: SelectTheme = {
   icon: { cursor: figures.pointer },
@@ -47,7 +51,7 @@ type SelectTheme = {
 };
 
 type Item<Value> = Separator | Choice<Value>;
-type Choice<Value> = {
+export type Choice<Value> = {
   value: Value;
   name?: string;
   description?: string;
@@ -63,7 +67,7 @@ type KeyChoice<KeyValue> = {
 
 type SelectConfig<Value, KeyValue> = {
   message: string;
-  choices: ReadonlyArray<Choice<Value>>;
+  choices: TCached | Promise<TCached>;
   actions?: ReadonlyArray<KeyChoice<KeyValue>>;
   actionMsg?: string;
   pageSize?: number;
@@ -72,8 +76,6 @@ type SelectConfig<Value, KeyValue> = {
   theme?: PartialDeep<Theme<SelectTheme>>;
   prefix?: string;
   sufix?: string | null;
-  includeSeperators?: boolean;
-  historyId?: number;
 };
 
 function isSelectable<Value>(item: Item<Value>): item is Choice<Value> {
@@ -83,29 +85,64 @@ function isSelectable<Value>(item: Item<Value>): item is Choice<Value> {
 export default async <Value, KeyValue = never>(
   options: SelectConfig<Value, KeyValue>
 ): Promise<Value | KeyValue | "EVENT_INTERRUPTED"> => {
+  const { actions, choices, message: messeageNotStyled, sufix, actionMsg } = options;
+  const theme = makeTheme<SelectTheme>(selectTheme, options.theme);
+  const message = chalk.italic(theme.style.message(messeageNotStyled));
+  const styledActionMessage = actionMsg ? chalk.underline.italic(actionMsg) : "";
+
+  const keyActions =
+    actions && actions?.length > 0
+      ? actions
+          ?.map((action) => `${action.name} ${chalk.blueBright("[" + action.key + "]")}`)
+          .join("\n")
+      : "";
+
+  const keyActionOutput = [styledActionMessage, keyActions].filter(Boolean).join("\n\n");
+  const separator = new Separator(process.stdout.columns).separator;
+  let lheader = message;
+
+  if (sufix) {
+    const length = process.stdout.columns - 4 - stringWidth(lheader) - stringWidth(sufix);
+    lheader =
+      lheader +
+      " ".repeat(length >= 0 ? length : process.stdout.columns - stringWidth(sufix)) +
+      chalk.gray(sufix);
+  }
+
+  let page = chalk.grey.bold("0 items");
+  const msg = [lheader, separator, page, separator, keyActionOutput, ansiEscapes.cursorHide]
+    .filter(Boolean)
+    .join("\n");
+
+  // let items: { name: string; value: TFile }[];
+  let items: Choice<Value>[];
+  let spinner: Ora | undefined = undefined;
+  let historyId: number;
+
+  if (choices instanceof Promise) {
+    spinner = ora(msg).start();
+    const data = await choices;
+    items = parseItemsForQuestion(data.items);
+    historyId = data.historyId;
+  } else {
+    items = parseItemsForQuestion(choices.items);
+    historyId = choices.historyId;
+  }
+  if (spinner) spinner.stop();
+  console.log(ansiEscapes.cursorHide);
+  console.clear();
+
   const answer = await createPrompt<Value, KeyValue, SelectConfig<Value, KeyValue>>(
     (
       config: SelectConfig<Value, KeyValue>,
       done: (value: Value | KeyValue | "EVENT_INTERRUPTED") => void
     ): string => {
-      const {
-        choices: items,
-        loop = true,
-        pageSize = 12,
-        actions,
-        prefix: initPrefix,
-        actionMsg,
-        sufix,
-        includeSeperators = true,
-        historyId = 0,
-      } = config;
-      const styledActionMessage = actionMsg ? chalk.underline.italic(actionMsg) : "";
+      const { loop = true, pageSize = 12, actions, prefix: initPrefix } = config;
       const firstRender = useRef(true);
       const theme = makeTheme<SelectTheme>(selectTheme, config.theme);
       const { isSeparator } = Separator;
-
-      const prefix: string = (initPrefix || "") + usePrefix({ theme }) + " ";
       let page = chalk.grey.bold("0 items");
+      const prefix: string = (initPrefix || "") + usePrefix({ theme }) + " ";
 
       const bounds = useMemo(() => {
         const first = items.findIndex((x, id) => isSelectable(x) && id === historyId);
@@ -125,7 +162,7 @@ export default async <Value, KeyValue = never>(
 
       useKeypress(async (key, _rl) => {
         if (isEnterKey(key)) {
-          done(selectedChoice.value);
+          done(selectedChoice.value as Value);
         } else if (
           isUpKey(key) ||
           isDownKey(key) ||
@@ -167,7 +204,6 @@ export default async <Value, KeyValue = never>(
         }
       });
 
-      const message = chalk.italic(theme.style.message(config.message));
       if (firstRender.current && items.length <= pageSize) {
         firstRender.current = false;
       }
@@ -196,35 +232,17 @@ export default async <Value, KeyValue = never>(
         });
       }
 
-      const keyActions =
-        actions && actions?.length > 0
-          ? actions
-              ?.map((action) => `${action.name} ${chalk.blueBright("[" + action.key + "]")}`)
-              .join("\n")
-          : "";
-
-      const keyActionOutput = [styledActionMessage, keyActions].filter(Boolean).join("\n\n");
       const choiceDescription =
         items.length > 0 &&
         selectedChoice.description &&
         `${chalk.gray(`${selectedChoice.description}`)}`;
 
-      const separator = new Separator(process.stdout.columns).separator;
-      let lheader = prefix + message;
-      if (sufix) {
-        const length = process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix);
-        lheader =
-          lheader +
-          " ".repeat(length >= 0 ? length : process.stdout.columns - stringWidth(sufix)) +
-          chalk.gray(sufix);
-      }
-
       return [
-        lheader,
-        includeSeperators && separator,
+        `${prefix}${lheader}`,
+        separator,
         page,
         choiceDescription,
-        includeSeperators && separator,
+        separator,
         keyActionOutput,
         ansiEscapes.cursorHide,
       ]

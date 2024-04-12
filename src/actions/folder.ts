@@ -8,6 +8,7 @@ import { TFile, TFolder } from "../types/types.js";
 import path from "path";
 import { downloadDriveItem, processMultipleItems } from "./batch.js";
 import { addCacheItem, getItems, removeCacheItem, updateCacheItem } from "../store/store.js";
+import pLimit from "p-limit";
 
 const { input_path, areYouSure, folder_questions, input } = questions;
 
@@ -49,7 +50,9 @@ const handleDeleteFolder = async (id: string, parentId?: string) => {
 const handleTrashFolder = async (id: string, parentId?: string) => {
   try {
     const proceed = await areYouSure(
-      "Proceed moving the folder to trash? (You will be able to restore it in the next 30 days.)"
+      `Proceed moving the folder to trash? ${chalk.gray(
+        "(You will be able to restore it in the next 30 days.)"
+      )}`
     );
     if (proceed) {
       removeCacheItem(parentId, id);
@@ -78,7 +81,6 @@ const handleMoveFolder = async (id: string, parentId?: string) => {
 
     parentId ? await processFolderActions(parentId) : await processMainActions();
   } catch (error) {
-    console.log("Error while moving the folder", error);
     parentId ? await processFolderActions(parentId) : await processMainActions();
   }
 };
@@ -93,12 +95,14 @@ const handleDownloadFolder = async (
     const cpath = await input_path("Provide a desired destination to store the drive folder: ");
     const newPath = path.join(cpath, folderName);
     await createFolder(path.join(newPath));
-    const bar = initProgressBar(files.length);
+    const { progressBar: bar, cancel } = initProgressBar(files.length);
 
     const processes = files.map(async (file) => {
+      if (cancel.value) return;
       await downloadDriveItem(file, path.join(newPath));
-      bar.increment();
+      if (!cancel.value) bar.increment();
     });
+
     await Promise.all(processes);
     bar.stop();
 
@@ -111,10 +115,13 @@ const handleDownloadFolder = async (
 export const processFolderActions = async (id: string, parentId?: string) => {
   try {
     const folderName = await gdrive.getFolderNameWithId(id);
-    const items = await getItems(id, () => gdrive.getFolderItems(id));
-    const answer = await folder_questions(items, `${folderName} (${items.length})`);
-    // const items = files || (await gdrive.getFolderItems(id)).files;
-
+    const { items, historyId } = await getItems(id, () => gdrive.getFolderItems(id));
+    const answer = await folder_questions(
+      items,
+      `${folderName} (${items.length})`,
+      id,
+      historyId
+    );
     switch (answer) {
       case "RENAME":
         await handleRenameFolder(folderName, id, parentId);

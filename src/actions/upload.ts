@@ -22,12 +22,10 @@ const { upload_questions, input, scraping_questions } = questions;
 export const scrapeAndUpload = async (id?: string) => {
   const { name, url: scrapeUrl, duration, types } = await scraping_questions();
   const urls = await scrapeMedia(scrapeUrl, types, duration);
-
-  const progressBar = initProgressBar(urls.length);
+  const { progressBar, cancel } = initProgressBar(urls.length);
   const limit = pLimit(20);
   let parentId = id;
   // if (name) parentId = await gdrive.createFolder(name, id);
-
   if (name) {
     const res = await gdrive.createFolder(name, id);
     parentId = res.id;
@@ -35,19 +33,25 @@ export const scrapeAndUpload = async (id?: string) => {
 
   const processes = urls.map(async (url) => {
     return limit(async () => {
+      if (cancel.value) return;
+
       const stream = await convertUrlToStream(url);
       if (!stream) return;
+
       await gdrive.uploadSingleFile({
         name: extractFileNameFromUrl(url),
         stream,
         parentId,
       });
-      progressBar.increment();
+
+      if (!cancel.value) {
+        progressBar.increment();
+      }
     });
   });
 
   await Promise.all(processes)
-    .then(() => console.log("\nUploading finished"))
+    .then(() => console.log("Uploading finished"))
     .catch((err) => console.error("Error occurred:", err));
 
   progressBar.stop();
@@ -97,16 +101,20 @@ export const handleUploadFolder = async (
   const res = await readdir(resPath);
   const files = res.reverse();
   let bar: SingleBar | null = null;
+  let isCancelled = false;
 
   if (files.length > 1) {
-    const progressBar = initProgressBar(files.length);
+    const { progressBar, cancel } = initProgressBar(files.length);
     bar = progressBar;
+    isCancelled = cancel.value;
   }
 
   const queue: { fullPath: string; name: string; parentId: string }[] = [];
   const limit = pLimit(20);
   const batchUpload = files.map(async (fileName, i) => {
     return limit(async () => {
+      if (isCancelled) return;
+
       const fullPath = path.join(resPath, fileName);
       const mimeType = getMimeType(fullPath);
 
@@ -122,7 +130,7 @@ export const handleUploadFolder = async (
         const isFolder = await isDirectory(fullPath);
         if (isFolder) queue.push({ fullPath, name: fileName, parentId });
       }
-      if (bar) bar.increment();
+      if (bar && !isCancelled) bar.increment();
     });
   });
   await Promise.all(batchUpload);
@@ -148,7 +156,6 @@ export const handleUploadFromPath = async (parent?: { name: string; parentId: st
     if (isDir) {
       await handleUploadFolder(res_path, parent);
     } else {
-      // GROUP:
       const stream = await convertPathToStream(res_path);
       const mimeType = getMimeType(res_path);
       const name = path.basename(res_path);

@@ -329,7 +329,7 @@ export default class Twitch {
   }
 
   public async getKickVIdeo(vodUrl: string): Promise<string[]> {
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({ headless: false });
     const page = await browser.newPage();
 
     // Enable request interception
@@ -347,13 +347,12 @@ export default class Twitch {
     });
 
     await page.goto(vodUrl);
-    await page.waitForSelector(
-      "#main-view > div.relative.z-50 > div.fixed.inset-0.flex.items-center.justify-center.p-4 > div > div.dialog-actions > div > button.variant-action.size-sm.base-button"
-    );
+    const selector =
+      "#main-view > div.relative.z-50 > div.fixed.inset-0.flex.items-center.justify-center.p-4 > div > div.dialog-actions > div > button.variant-action.size-sm.base-button";
 
-    await page.click(
-      "#main-view > div.relative.z-50 > div.fixed.inset-0.flex.items-center.justify-center.p-4 > div > div.dialog-actions > div > button.variant-action.size-sm.base-button"
-    );
+    await page.waitForSelector(selector);
+
+    await page.click(selector);
 
     let checkedOnce: boolean = false;
     const checkUrlsLength = async () => {
@@ -371,7 +370,7 @@ export default class Twitch {
     };
 
     await checkUrlsLength();
-    await browser.close();
+    // await browser.close();
     return urls;
   }
 }
