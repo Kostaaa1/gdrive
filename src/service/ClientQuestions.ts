@@ -11,23 +11,22 @@ import {
   UploadActions,
 } from "../types/types.js";
 import chalk from "chalk";
-import inquirer from "inquirer";
 import {
   isExtensionValid,
   isGdriveFolder,
   notify,
   parseItemsForQuestion,
 } from "../utils/utils.js";
-import InterruptedPrompt from "inquirer-interrupted-prompt";
-
 import interactiveList from "../custom/InteractiveList.mjs";
 import { existsSync } from "fs";
 import checkboxPrompt from "../custom/Checkbox.mjs";
-import inquirerPressToContinue from "inquirer-press-to-continue";
 import type { KeyDescriptor } from "inquirer-press-to-continue";
 import { updateHistoryId } from "../store/store.js";
 // @ts-ignore
 import { PathPrompt } from "inquirer-path";
+import inquirer from "inquirer";
+import InterruptedPrompt from "inquirer-interrupted-prompt";
+import inquirerPressToContinue from "inquirer-press-to-continue";
 
 inquirer.registerPrompt("path", PathPrompt);
 inquirer.registerPrompt("press-to-continue", inquirerPressToContinue);

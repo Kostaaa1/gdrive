@@ -3,5 +3,4 @@ node_modules
 ./tokens
 ./tokens/googleDriveToken.json
 tokens
-tokens/googleDriveToken.json
 token.json

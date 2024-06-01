@@ -4,10 +4,11 @@ import { isGdriveFolder, openFile } from "./utils/utils.js";
 import { processFolderActions } from "./actions/folder.js";
 import { processSelectedFile } from "./actions/file.js";
 import { processTrashActions } from "./actions/trash.js";
-import open from "open";
 import { processUploadActions } from "./actions/upload.js";
 import { processMultipleItems } from "./actions/batch.js";
 import { addCacheItem, getItems, getStorageSize } from "./store/store.js";
+import open from "open";
+
 const { input_path, input } = questions;
 
 export const processMainActions = async () => {
@@ -57,10 +58,6 @@ export const processMainActions = async () => {
 };
 
 (async () => {
-  try {
-    await gdrive.authorize();
-    await processMainActions();
-  } catch (error) {
-    await processMainActions();
-  }
+  await gdrive.logIn();
+  await processMainActions();
 })();
