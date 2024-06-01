@@ -38,8 +38,8 @@ const handleDeleteFolder = async (id: string, parentId?: string) => {
   try {
     const proceed = await areYouSure("Proceed deleting the folder?");
     if (proceed) {
-      removeCacheItem(parentId, id);
       await gdrive.deleteItem(id);
+      removeCacheItem(parentId, id);
     }
     await processFolderActions(id, parentId);
   } catch (error) {
@@ -54,10 +54,14 @@ const handleTrashFolder = async (id: string, parentId?: string) => {
         "(You will be able to restore it in the next 30 days.)"
       )}`
     );
+
     if (proceed) {
       removeCacheItem(parentId, id);
       await gdrive.moveToTrash(id);
+      await processMainActions();
+      return;
     }
+
     await processFolderActions(id, parentId);
   } catch (error) {
     await processFolderActions(id, parentId);
@@ -95,12 +99,13 @@ const handleDownloadFolder = async (
     const cpath = await input_path("Provide a desired destination to store the drive folder: ");
     const newPath = path.join(cpath, folderName);
     await createFolder(path.join(newPath));
-    const { progressBar: bar, cancel } = initProgressBar(files.length);
+    const cancel = { value: false };
+    const { progressBar: bar } = initProgressBar(files.length);
 
     const processes = files.map(async (file) => {
-      if (cancel.value) return;
+      if (cancel.value) throw new Error("Process terminated");
       await downloadDriveItem(file, path.join(newPath));
-      if (!cancel.value) bar.increment();
+      bar.increment();
     });
 
     await Promise.all(processes);

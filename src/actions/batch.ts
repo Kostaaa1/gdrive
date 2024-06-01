@@ -38,15 +38,13 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
       actionFn: (item: TFile) => Promise<void>,
       concurrencyLimit = 20
     ) => {
-      const {
-        progressBar,
-        cancel: { value },
-      } = initProgressBar(selected.length);
+      const cancel = { value: false };
+      const { progressBar } = initProgressBar(selected.length, cancel);
+
       const limit = pLimit(concurrencyLimit);
       const processes = selected.map(async (item) => {
         return limit(async () => {
-          if (value) return;
-
+          if (cancel.value) throw new Error("Process terminated");
           await actionFn(item);
           progressBar.increment();
         });
@@ -74,7 +72,6 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
       case "TRASH":
         const p = await questions.areYouSure(proceedMsgs[operation]);
         if (!p) break;
-
         await executeOperation(async (selected) => {
           removeCacheItem(parentId, selected.id);
           await gdrive.moveToTrash(selected.id);
@@ -83,14 +80,12 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
       case "DELETE":
         const proceed = await questions.areYouSure(proceedMsgs[operation]);
         if (!proceed) break;
-
         await executeOperation(async (selected) => {
           removeCacheItem(parentId, selected.id);
           await gdrive.deleteItem(selected.id);
         });
         break;
     }
-
     parentId ? await processFolderActions(parentId) : await processMainActions();
   } catch (error) {
     parentId ? await processFolderActions(parentId) : await processMainActions();

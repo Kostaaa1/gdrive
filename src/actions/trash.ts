@@ -2,7 +2,6 @@ import pLimit from "p-limit";
 import { cache, gdrive, questions } from "../config/config.js";
 import { processMainActions } from "../index.js";
 import { initProgressBar, notify } from "../utils/utils.js";
-import { addCacheItem } from "../store/store.js";
 
 export const processTrashActions = async () => {
   try {
@@ -13,27 +12,26 @@ export const processTrashActions = async () => {
     }
 
     const { selectedItems, action } = await questions.trash_questions(trashItems);
-    const {
-      progressBar,
-      cancel: { value },
-    } = initProgressBar(selectedItems.length);
+    const cancel = { value: false };
+    const { progressBar } = initProgressBar(selectedItems.length, cancel);
 
-    const limit = pLimit(4);
+    const limit = pLimit(8);
     if (selectedItems.length === trashItems.length && action === "DELETE") {
       await gdrive.emptyTrash();
     } else {
       const processes = selectedItems.map(({ id }) => {
         return limit(async () => {
-          if (value) return;
+          if (cancel.value) throw new Error("Process terminated");
           if (action === "RECOVER") {
-            const parentId = await gdrive.recoverTrashItem(id);
-            cache.del(parentId);
+            await gdrive.recoverTrashItem(id);
+            cache.flushAll();
           } else if (action === "DELETE") {
             await gdrive.deleteItem(id);
           }
-          if (!value) progressBar.increment();
+          progressBar.increment();
         });
       });
+
       await Promise.all(processes);
       progressBar.stop();
     }

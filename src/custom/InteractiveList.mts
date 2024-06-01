@@ -103,6 +103,7 @@ export default async <Value, KeyValue = never>(
       const firstRender = useRef(true);
       const theme = makeTheme<SelectTheme>(selectTheme, config.theme);
       const { isSeparator } = Separator;
+      const [status, setStatus] = useState("pending");
 
       const prefix: string = (initPrefix || "") + usePrefix({ theme }) + " ";
       let page = chalk.grey.bold("0 items");
@@ -125,6 +126,7 @@ export default async <Value, KeyValue = never>(
 
       useKeypress(async (key, _rl) => {
         if (isEnterKey(key)) {
+          setStatus("done");
           done(selectedChoice.value);
         } else if (
           isUpKey(key) ||
@@ -177,9 +179,8 @@ export default async <Value, KeyValue = never>(
           items,
           active,
           renderItem({ item, isActive }: { item: Item<Value>; isActive: boolean }) {
-            if (isSeparator(item)) {
-              return `${item.separator}`;
-            }
+            if (isSeparator(item)) return `${item.separator}`;
+
             const line = item.name || item.value;
             if (item.disabled) {
               const disabledLabel =
@@ -207,26 +208,26 @@ export default async <Value, KeyValue = never>(
       const choiceDescription =
         items.length > 0 &&
         selectedChoice.description &&
-        `${chalk.gray(`${selectedChoice.description}`)}`;
+        `\n${chalk.gray(`${selectedChoice.description}`)}`;
 
       const separator = new Separator(process.stdout.columns).separator;
       let lheader = prefix + message;
       if (sufix) {
         const length = process.stdout.columns - 1 - stringWidth(lheader) - stringWidth(sufix);
-        lheader =
-          lheader +
+        lheader = lheader = `${lheader}${
           " ".repeat(length >= 0 ? length : process.stdout.columns - stringWidth(sufix)) +
-          chalk.gray(sufix);
+          chalk.gray(sufix)
+        }`;
       }
 
       return [
         lheader,
         includeSeperators && separator,
         page,
-        choiceDescription,
+        status !== "done" && choiceDescription,
         includeSeperators && separator,
         keyActionOutput,
-        ansiEscapes.cursorHide,
+        status !== "done" && ansiEscapes.cursorHide,
       ]
         .filter(Boolean)
         .join("\n");

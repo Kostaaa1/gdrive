@@ -86,11 +86,10 @@ export class ClientQuestions {
     let { newName } = await inquirer.prompt({
       type: "input",
       name: "newName",
-      message: "Provide new name of the selected: ",
+      message: `Renaming ${chalk.blueBright(previousName)} file: `,
     });
-
     const isValid = isExtensionValid(previousName);
-    if (isValid) {
+    if (isValid && !isExtensionValid(newName)) {
       const base = previousName.split(".").slice(-1);
       newName += `.${base}`;
     }
@@ -398,7 +397,7 @@ export class ClientQuestions {
         type: "input",
         default: () => {},
         validate: (input: any) => {
-          if (!isNaN(input)) {
+          if (input.length > 0 && !isNaN(input)) {
             return true;
           } else {
             console.log(`\n${chalk.red("Incorrect input. Please provide a number")}`);

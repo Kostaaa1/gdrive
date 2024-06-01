@@ -25,49 +25,83 @@ type TWVod = {
 };
 
 const { TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_BEARER_TOKEN } = process.env;
-const stop = async (ms?: 1000) => new Promise((res) => setTimeout(res, ms));
+
+function getRFC3339Date(daysAgo: number) {
+  const today = new Date();
+  const pastDate = new Date(today);
+  pastDate.setDate(today.getDate() - daysAgo);
+
+  return pastDate.toISOString();
+}
 
 export default class Twitch {
   private clientId = "kimne78kx3ncx6brgo4mv6wki5h1ko";
   private sha256Hash = "0828119ded1c13477966434e15800ff57ddacf13ba1911c129dc2200705b0712";
 
-  // public async test(username: string) {
-  //   try {
-  //     const response = await axios.post(
-  //       `https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`
-  //     );
+  public async test(username: string) {
+    try {
+      const response = await axios.post(
+        `https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`
+      );
+      const accessToken = response.data.access_token;
+      console.log(accessToken);
 
-  //     console.log("GET ACCESS TOKEN ", response.data);
-  //     const accessToken = response.data.access_token;
-  //     const headers = {
-  //       "Client-ID": TWITCH_CLIENT_ID,
-  //       Authorization: `Bearer ${accessToken}`,
-  //     };
+      // const headers = {
+      //   "Client-Id": TWITCH_CLIENT_ID,
+      //   Authorization: `Bearer ${accessToken}`,
+      // };
+      const loginURL = `https://api.twitch.tv/helix/users?login=${username}`;
+      console.log("Url", loginURL);
+      const res = await axios.get(loginURL, {
+        headers: {
+          "Client-Id": TWITCH_CLIENT_ID,
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      console.log("RESPONSE: ", res);
 
-  //     const res = await axios.get(`https://api.twitch.tv/helix/users?login=${username}`, {
-  //       headers,
-  //     });
+      // const userId = res.data.data[0].id;
+      // const vods = await axios.get(
+      //   `https://api.twitch.tv/helix/videos?user_id=${userId}?type=archive`,
+      //   {
+      //     headers,
+      //   }
+      // );
 
-  //     const userId = res.data.data[0].id;
-  //     const vods = await axios.get(
-  //       `https://api.twitch.tv/helix/videos?user_id=${userId}?type=archive`,
-  //       {
-  //         headers,
-  //       }
-  //     );
+      // const clips = await axios.get(
+      //   `https://api.twitch.tv/helix/clips?broadcaster_id=${userId}`,
+      //   { headers }
+      // );
+      // const clips = await axios.get("https://api.twitch.tv/helix/clips", {
+      //   params: {
+      //     broadcaster_id: userId,
+      //     first: 100,
+      //     before: true,
+      //     ended_at: getRFC3339Date(30),
+      //   },
+      //   headers,
+      // });
 
-  //     const clips = await axios.get(
-  //       `https://api.twitch.tv/helix/clips?broadcaster_id=${userId}`,
-  //       { headers }
-  //     );
-  //     console.log(res.data);
-  //     console.log(vods.data.data);
-  //     console.log(clips.data.data);
-  //   } catch (error) {
-  //     console.error("Failed to get access token:", error);
-  //     return null;
-  //   }
-  // }
+      // console.log("idk", res.data);
+      // console.log("vods", vods.data.data);
+      // console.log("clips", clips.data.data);
+      // return [
+      // {
+      //   username,
+      //   type: "Videos",
+      //   data: vods.data.data.map((x: { url: string }) => x.url),
+      // },
+      // {
+      //   username,
+      //   type: "Clips",
+      //   data: clips.data.data.map((x: { url: string }) => x.url),
+      // },
+      // ];
+    } catch (error) {
+      console.error("Failed to get access token:", error);
+      return null;
+    }
+  }
 
   public async getClipStream(url: string): Promise<Readable> {
     const { mediaId } = this.extractUrlInfo(url);
@@ -80,8 +114,8 @@ export default class Twitch {
         extensions: {
           persistedQuery: {
             version: 1,
-            // sha256Hash: "36b89d2507fce29e5ca551df756d27c1cfe079e2609642b4390aa4c35796eb11",
-            sha256Hash: this.sha256Hash,
+            sha256Hash: "36b89d2507fce29e5ca551df756d27c1cfe079e2609642b4390aa4c35796eb11",
+            // sha256Hash: this.sha256Hash,
           },
         },
       },
@@ -130,16 +164,11 @@ export default class Twitch {
 
     try {
       const response = await axios.post("https://gql.twitch.tv/gql", data, { headers });
-
       if (response.status !== 200) {
         throw new Error(`${response.data.message}`);
       }
-
       console.log(response.data.data);
       return response.data.data.videoPlaybackAccessToken;
-      // return isVod
-      //   ? response.data.data.videoPlaybackAccessToken
-      //   : response.data.data.streamPlaybackAccessToken;
     } catch (error) {
       throw error;
     }
@@ -148,6 +177,7 @@ export default class Twitch {
   private getPlaylist(id: string, accessToken: PublicAccessToken): Promise<string> {
     return new Promise((resolve, reject) => {
       const url = `https://usher.ttvnw.net/vod/${id}.m3u8?client_id=${this.clientId}&token=${accessToken.value}&sig=${accessToken.signature}&allow_source=true`;
+      console.log("DKAOSDOKASO URL", url);
 
       const req = https
         .get(url, (response) => {
@@ -214,6 +244,8 @@ export default class Twitch {
     };
   }
 
+  private async getTwitchClips(): Promise<any> {}
+
   private async getMediaInfo(inputUrl: string): Promise<ParsedUrlData> {
     const { mediaId, mediaType } = this.extractUrlInfo(inputUrl);
     const res = await axios.get(`https://api.twitch.tv/helix/${mediaType}?id=${mediaId}`, {
@@ -267,8 +299,8 @@ export default class Twitch {
     try {
       const accessToken = await this.getPlaybackAccessToken(id);
       const m3u8Playlist = await this.getPlaylist(id, accessToken);
+      console.log(m3u8Playlist);
       return this.parsePlaylist(m3u8Playlist);
-      // return raw ? m3u8Playlist : this.parsePlaylist(m3u8Playlist);
     } catch (error) {
       throw new Error(`Error while getting the vod: ${error}`);
     }
@@ -351,7 +383,6 @@ export default class Twitch {
       "#main-view > div.relative.z-50 > div.fixed.inset-0.flex.items-center.justify-center.p-4 > div > div.dialog-actions > div > button.variant-action.size-sm.base-button";
 
     await page.waitForSelector(selector);
-
     await page.click(selector);
 
     let checkedOnce: boolean = false;

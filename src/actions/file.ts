@@ -63,7 +63,7 @@ export const processSelectedFile = async (file: TFile, folder?: { name: string; 
           const hasFileExtension = isExtensionValid(newPath);
           if (!existsSync(newPath)) {
             console.log(
-              "File newPath is invalid. Please check if you have entered the correct file path."
+              "File path is invalid. Make sure you have entered the correct file path."
             );
             await backFunc(file);
             return;

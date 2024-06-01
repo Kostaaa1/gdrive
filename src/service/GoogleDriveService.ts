@@ -12,7 +12,7 @@ const {
   GOOGLE_REDIRECT_URL = "",
 } = process.env;
 
-const { refresh_token } = JSON.parse(readFileSync("./token.json", "utf-8"));
+const { refresh_token } = JSON.parse(readFileSync("./tokens/googleDriveToken.json", "utf-8"));
 // const itemFileds = "fields(id, name, mimeType)";
 
 export class GoogleDriveService {
@@ -61,7 +61,7 @@ export class GoogleDriveService {
       const code = readline.question("Paste authorization code here: ");
 
       const { tokens } = await this.oauth2Client.getToken(code);
-      await writeFile("./token.json", JSON.stringify(tokens));
+      await writeFile("./tokens/googleDriveToken.json", JSON.stringify(tokens));
       this.oauth2Client.setCredentials(tokens);
     }
   }
@@ -77,8 +77,6 @@ export class GoogleDriveService {
       ? folders?.map((x) => ({ name: x.name, value: x.name, mimeType: x.mimeType, id: x.id }))
       : [];
   }
-
-  public async updateFileName(fileId: string, newName: string) {}
 
   public async getFolderItems(folderId?: string, pageSize: number = 800): Promise<TFile[]> {
     const res = await this.drive_client.files.list({
@@ -96,20 +94,6 @@ export class GoogleDriveService {
     const files = await this.getFolderItems(folderId);
     return files.length;
   }
-
-  // public async fileExists(folderId: string, name: string): Promise<boolean> {
-  //   try {
-  //     const folder = await this.drive_client.files.list({
-  //       q: `'${folderId}' in parents and name='${name}'`,
-  //       fields: "nextPageToken, files(id)",
-  //     });
-  //     const { files } = folder.data;
-  //     return files!.length > 0;
-  //   } catch (error) {
-  //     throw new Error("Error at fileExists");
-  //   }
-  // }
-
   public async getFolderIdWithName(name: string, parentId?: string): Promise<string> {
     try {
       const res = await this.drive_client.files.list({
@@ -168,15 +152,6 @@ export class GoogleDriveService {
     if (!data) throw new Error("Error while getting the name of the items: " + id);
     return { name: data.name, id: data.id, mimeType: data.mimeType } as TFile;
   }
-
-  // public async getItem(id: string): Promise<TFile> {
-  //   const res = await this.drive_client.files.get({
-  //     fileId: id,
-  //     fields: "files(id, name, mimeType)",
-  //   });
-  //   if (!res.data) throw new Error("Error while getting the name of the items: " + id);
-  //   return res.data as TFile;
-  // }
 
   public async getDriveFolders(filterId?: string) {
     const folders: TFolder[] = [{ id: "root", name: "root", path: "/", mimeType: "" }];
@@ -252,9 +227,9 @@ export class GoogleDriveService {
   }
 
   // Change it to return only readable stream
-  public async downloadFile(path: string, fileId: string) {
+  public async downloadFile(filePath: string, fileId: string) {
     try {
-      const fileStream = createWriteStream(path);
+      const fileStream = createWriteStream(filePath);
       const file = await this.drive_client.files.get(
         { fileId: fileId, alt: "media" },
         { responseType: "stream" }
@@ -386,4 +361,24 @@ export class GoogleDriveService {
       return undefined;
     }
   }
+  // public async fileExists(folderId: string, name: string): Promise<boolean> {
+  //   try {
+  //     const folder = await this.drive_client.files.list({
+  //       q: `'${folderId}' in parents and name='${name}'`,
+  //       fields: "nextPageToken, files(id)",
+  //     });
+  //     const { files } = folder.data;
+  //     return files!.length > 0;
+  //   } catch (error) {
+  //     throw new Error("Error at fileExists");
+  //   }
+  // }
+  // public async getItem(id: string): Promise<TFile> {
+  //   const res = await this.drive_client.files.get({
+  //     fileId: id,
+  //     fields: "files(id, name, mimeType)",
+  //   });
+  //   if (!res.data) throw new Error("Error while getting the name of the items: " + id);
+  //   return res.data as TFile;
+  // }
 }

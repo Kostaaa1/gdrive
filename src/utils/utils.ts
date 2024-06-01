@@ -175,7 +175,6 @@ export async function convertUrlToStream(url: string): Promise<internal.Readable
     const res = await axios.get(url, { responseType: "stream" });
     return res.status === 200 ? res.data : [];
   } catch (error) {
-    console.log(error);
     return null;
   }
 }
@@ -213,8 +212,10 @@ export const notify = (message: string, ms: number = 500) =>
 export function extractFileNameFromUrl(url: string) {
   const urlParts = url.split("/");
   let fileName = urlParts[urlParts.length - 1];
+
   fileName = fileName.split("?")[0];
   fileName = fileName.split("#")[0];
+
   if (!fileName || fileName === "/") {
     fileName = urlParts[urlParts.length - 2];
   }
@@ -303,25 +304,6 @@ export function formatStorageQuotaMessage(storageQuota: StorageQuota) {
   return `${usedMessage} of ${limitMessage}`;
 }
 
-export async function getTotalBytesFromPlaylist(url: string) {
-  const response = await axios.get(url);
-  console.log(response.data);
-
-  const playlistText = response.data;
-  const segmentUrls = playlistText.split("\n").filter((line: any) => line.startsWith("http"));
-  let totalBytes = 0;
-  for (const segmentUrl of segmentUrls) {
-    console.log(segmentUrl);
-    const segmentResponse = await fetch(segmentUrl);
-    // @ts-ignore
-    const segmentSize = parseInt(segmentResponse.headers.get("content-length"));
-    if (!isNaN(segmentSize)) {
-      totalBytes += segmentSize;
-    }
-  }
-  return totalBytes;
-}
-
 export function isGdriveFolder(type: string) {
   return type === "application/vnd.google-apps.folder";
 }
@@ -347,17 +329,16 @@ export const parseItemsForQuestion = <Value>(items: TFile[]): Choice<Value>[] =>
 
 export function initProgressBar(
   itemsLength: number,
-  message: string = "Progress"
-): { progressBar: SingleBar; cancel: { value: boolean } } {
-  const cancel = { value: false };
-
+  cancel?: { value: boolean },
+  message?: string
+): { progressBar: SingleBar; cancel?: { value: boolean } } {
   emitKeypressEvents(process.stdin);
   process.stdin.setRawMode(true);
   process.stdin.resume();
 
   const handleKeypress = (_: any, key: any) => {
     if (key && key.name === "escape") {
-      cancel.value = true;
+      if (cancel) cancel.value = true;
       progressBar.stop();
       console.log(chalk.gray("\nOperation terminated."));
       process.stdin.setRawMode(false);
@@ -367,7 +348,7 @@ export function initProgressBar(
   };
   process.stdin.on("keypress", handleKeypress);
 
-  const msg = `${message} [{bar}] {percentage}% | {value}/{total}`;
+  const msg = `${message || "Progress"} [{bar}] {percentage}% | {value}/{total}`;
   const progressBar = new SingleBar(
     {
       format: msg,
@@ -381,3 +362,20 @@ export function initProgressBar(
   progressBar.start(itemsLength, 0);
   return { progressBar, cancel };
 }
+
+// export async function getTotalBytesFromPlaylist(url: string) {
+//   const response = await axios.get(url);
+//   const playlistText = response.data;
+//   const segmentUrls = playlistText.split("\n").filter((line: any) => line.startsWith("http"));
+//   let totalBytes = 0;
+//   for (const segmentUrl of segmentUrls) {
+//     console.log(segmentUrl);
+//     const segmentResponse = await fetch(segmentUrl);
+//     // @ts-ignore
+//     const segmentSize = parseInt(segmentResponse.headers.get("content-length"));
+//     if (!isNaN(segmentSize)) {
+//       totalBytes += segmentSize;
+//     }
+//   }
+//   return totalBytes;
+// }
