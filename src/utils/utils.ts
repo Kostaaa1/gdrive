@@ -1,11 +1,11 @@
 import axios from "axios";
-import internal, { PassThrough, Readable } from "stream";
+import internal, { PassThrough } from "stream";
 import fs from "fs";
 import mime from "mime";
 import { exec } from "child_process";
 import open from "open";
 import path from "path";
-import { readdir, stat, access, mkdir } from "fs/promises";
+import { readdir, access, mkdir } from "fs/promises";
 import chalk from "chalk";
 import { Presets, SingleBar } from "cli-progress";
 import { StorageQuota, TFile } from "../types/types.js";
@@ -327,19 +327,14 @@ export const parseItemsForQuestion = <Value>(items: TFile[]): Choice<Value>[] =>
   }));
 };
 
-export function initProgressBar(
-  itemsLength: number,
-  cancel?: { value: boolean },
-  message?: string
-): { progressBar: SingleBar; cancel?: { value: boolean } } {
+export function cancelOnEscape(cancel: { value: boolean }) {
   emitKeypressEvents(process.stdin);
   process.stdin.setRawMode(true);
   process.stdin.resume();
 
   const handleKeypress = (_: any, key: any) => {
     if (key && key.name === "escape") {
-      if (cancel) cancel.value = true;
-      progressBar.stop();
+      cancel.value = true;
       console.log(chalk.gray("\nOperation terminated."));
       process.stdin.setRawMode(false);
       process.stdin.pause();
@@ -348,6 +343,20 @@ export function initProgressBar(
   };
   process.stdin.on("keypress", handleKeypress);
 
+  return () => {
+    console.log(" ON CANCEL EXIT PROCESS");
+    process.stdin.removeListener("keypress", handleKeypress);
+    process.stdin.setRawMode(false);
+    process.stdin.pause();
+  };
+}
+
+export function initProgressBar(
+  itemsLength: number,
+  cancel: { value: boolean },
+  message?: string
+): { progressBar: SingleBar; cancel?: { value: boolean } } {
+  const cleanup = cancelOnEscape(cancel);
   const msg = `${message || "Progress"} [{bar}] {percentage}% | {value}/{total}`;
   const progressBar = new SingleBar(
     {
@@ -357,7 +366,7 @@ export function initProgressBar(
   );
 
   progressBar.on("stop", () => {
-    process.stdin.removeListener("keypress", handleKeypress);
+    cleanup();
   });
   progressBar.start(itemsLength, 0);
   return { progressBar, cancel };

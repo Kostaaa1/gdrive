@@ -11,7 +11,8 @@ export const downloadDriveItem = async (item: TFile, folderPath: string) => {
   const { id, mimeType, name } = item;
   if (isGdriveFolder(mimeType)) {
     const files = await gdrive.getFolderItems(id);
-    const { progressBar } = initProgressBar(files.length);
+    const cancel = { value: false };
+    const { progressBar } = initProgressBar(files.length, cancel);
     const newPath = await createFolder(path.join(folderPath, name));
 
     const downloadPromises = files.map(async (file) => {
@@ -42,15 +43,15 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
       const { progressBar } = initProgressBar(selected.length, cancel);
 
       const limit = pLimit(concurrencyLimit);
-      const processes = selected.map(async (item) => {
+      const tasks = selected.map(async (item) => {
         return limit(async () => {
           if (cancel.value) throw new Error("Process terminated");
           await actionFn(item);
           progressBar.increment();
         });
       });
+      await Promise.all(tasks);
 
-      await Promise.all(processes);
       progressBar.stop();
     };
 

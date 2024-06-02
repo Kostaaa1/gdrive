@@ -19,7 +19,7 @@ export const processTrashActions = async () => {
     if (selectedItems.length === trashItems.length && action === "DELETE") {
       await gdrive.emptyTrash();
     } else {
-      const processes = selectedItems.map(({ id }) => {
+      const tasks = selectedItems.map(({ id }) => {
         return limit(async () => {
           if (cancel.value) throw new Error("Process terminated");
           if (action === "RECOVER") {
@@ -31,8 +31,7 @@ export const processTrashActions = async () => {
           progressBar.increment();
         });
       });
-
-      await Promise.all(processes);
+      await Promise.all(tasks);
       progressBar.stop();
     }
 

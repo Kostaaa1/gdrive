@@ -1,10 +1,8 @@
 import puppeteer from "puppeteer";
 import { ScrapingOpts } from "../types/types.js";
-import { stop } from "../utils/utils.js";
+import { cancelOnEscape, stop } from "../utils/utils.js";
 
 type ScrapeMedia = ("img" | "video" | "iframe")[];
-// type ScrapeMedia = ("img" | "video" | "source" | "iframe")[];
-
 export const scrapeMedia = async (
   url: string,
   media: ScrapingOpts[],
@@ -16,8 +14,9 @@ export const scrapeMedia = async (
     console.log("URL incorrect. Make sure you are using the correct URL.");
     return [];
   }
-
-  console.log(`Scrapiing ${url}...`);
+  console.log(`Scraping ${url}...`);
+  const cancel = { value: false };
+  const cleanup = cancelOnEscape(cancel);
   const browser = await puppeteer.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -38,18 +37,17 @@ export const scrapeMedia = async (
   try {
     let previousHeight;
     let currentHeight = 0;
-
     const parsedMedia = media
       .map((x) => (x === "IMAGE" ? "img" : x === "VIDEO" ? "video" : ""))
       .filter((x) => x.length > 0) as ScrapeMedia;
 
     const triggerInfiniteScroll = async () => {
-      while (true) {
+      while (!cancel.value) {
         previousHeight = currentHeight;
         currentHeight = (await page.evaluate("document.body.scrollHeight")) as number;
         if (previousHeight >= currentHeight) break;
-        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)");
-        await stop(2000);
+        await page.evaluate("window.scrollToee, document.body.scrollHeight)");
+        await stop(1200);
       }
     };
 
@@ -107,9 +105,10 @@ export const scrapeMedia = async (
     }, parsedMedia);
 
     console.log(`Scraping finished, found ${mediaSources.length} URLs.`);
+    cleanup();
     return mediaSources;
   } catch (err) {
-    console.log("Unexpected error, maybe you provided non-existing URL.");
+    console.log("Unexpected error. Make sure you are entering the correct URL.");
     return [];
   } finally {
     await browser.close();

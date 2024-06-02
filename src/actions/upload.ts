@@ -52,7 +52,7 @@ export const scrapeAndUpload = async (id?: string) => {
     parentId = res.id;
   }
 
-  const processes = urls.map(async (url) => {
+  const tasks = urls.map(async (url) => {
     return limit(async () => {
       if (cancel.value) throw new Error("Process terminated");
 
@@ -67,7 +67,7 @@ export const scrapeAndUpload = async (id?: string) => {
     });
   });
 
-  await Promise.all(processes)
+  await Promise.all(tasks)
     .then(() => console.log("\nUploading finished"))
     .catch((err) => console.error("Error occurred:", err));
 

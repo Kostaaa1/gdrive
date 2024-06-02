@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { gdrive, questions } from "./config/config.js";
+import { cache, gdrive, questions } from "./config/config.js";
 import { isGdriveFolder, openFile } from "./utils/utils.js";
 import { processFolderActions } from "./actions/folder.js";
 import { processSelectedFile } from "./actions/file.js";
@@ -40,6 +40,11 @@ export const processMainActions = async () => {
         break;
       case "OPEN_DRIVE":
         await open("https://drive.google.com/drive/u/0/my-drive");
+        await processMainActions();
+        break;
+      case "SWITCH":
+        cache.flushAll();
+        await gdrive.logOut();
         await processMainActions();
         break;
       case "EXIT":

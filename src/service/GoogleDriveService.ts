@@ -1,4 +1,4 @@
-import { createWriteStream, readFileSync } from "fs";
+import { createWriteStream } from "fs";
 import { writeFile, readFile } from "fs/promises";
 import { drive_v3, google } from "googleapis";
 import readline from "readline-sync";
@@ -21,13 +21,10 @@ type Token = {
   expiry_date: number;
 };
 
-// const { refresh_token } = JSON.parse(readFileSync("./tokens/googleDriveToken.json", "utf-8"));
-// const itemFileds = "fields(id, name, mimeType)";
-
 export class GoogleDriveService {
   public drive_client: drive_v3.Drive;
   private oauth2Client;
-  private tokens: string = "";
+  private tokens: { [key: string]: Token } = {};
 
   private static clientId = GOOGLE_CLIENT_ID;
   private static clientSecret = GOOGLE_CLIENT_SECRET;
@@ -53,10 +50,10 @@ export class GoogleDriveService {
     }
   }
 
-  public async authorize(user: string) {
+  public async authorize(inputUser: string) {
     let isGranted: boolean = false;
-    if (user) {
-      const { refresh_token }: Token = JSON.parse(this.tokens)[user];
+    if (inputUser) {
+      const { refresh_token }: Token = this.tokens[inputUser];
       this.oauth2Client.setCredentials({ refresh_token });
       isGranted = await this.isAccessGranted();
     }
@@ -79,18 +76,23 @@ export class GoogleDriveService {
       });
 
       if (user) {
-        const data: { [key: string]: typeof tokens } = { ...JSON.parse(this.tokens) };
+        const data: { [key: string]: typeof tokens } = this.tokens;
         data[user.emailAddress ?? user.displayName!] = tokens;
         await writeFile("./tokens/googleDriveToken.json", JSON.stringify(data));
       }
     }
   }
 
+  public async logOut() {
+    this.oauth2Client.setCredentials({});
+    await this.logIn();
+  }
+
   public async logIn() {
     console.clear();
     const userTokens = await readFile("./tokens/googleDriveToken.json", "utf-8");
+    this.tokens = JSON.parse(userTokens);
     let selectedUser: string = "";
-    this.tokens = userTokens || JSON.stringify({});
 
     if (userTokens) {
       const parsed = JSON.parse(userTokens);
@@ -121,7 +123,6 @@ export class GoogleDriveService {
   }
 
   public async getFolderItems(folderId?: string, pageSize: number = 800): Promise<TFile[]> {
-    console.log("Get folder items called? ");
     const res = await this.drive_client.files.list({
       q: `'${folderId || "root"}' in parents and trashed=false`,
       fields: "files(id, name, mimeType)",
@@ -206,7 +207,7 @@ export class GoogleDriveService {
       const files = res.data.files!;
 
       const limit = pLimit(50);
-      const processes = files.map((file) => {
+      const tasks = files.map((file) => {
         return limit(async () => {
           const { id, name, mimeType } = file;
           if (id === filterId) return;
@@ -215,7 +216,7 @@ export class GoogleDriveService {
           folders.push({ id: id!, name: name!, mimeType: mimeType!, path: newPath });
         });
       });
-      await Promise.all(processes);
+      await Promise.all(tasks);
     };
 
     await getSubFolders("root");

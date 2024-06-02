@@ -8,7 +8,6 @@ import { TFile, TFolder } from "../types/types.js";
 import path from "path";
 import { downloadDriveItem, processMultipleItems } from "./batch.js";
 import { addCacheItem, getItems, removeCacheItem, updateCacheItem } from "../store/store.js";
-import pLimit from "p-limit";
 
 const { input_path, areYouSure, folder_questions, input } = questions;
 
@@ -100,17 +99,16 @@ const handleDownloadFolder = async (
     const newPath = path.join(cpath, folderName);
     await createFolder(path.join(newPath));
     const cancel = { value: false };
-    const { progressBar: bar } = initProgressBar(files.length);
+    const { progressBar: bar } = initProgressBar(files.length, cancel);
 
-    const processes = files.map(async (file) => {
+    const tasks = files.map(async (file) => {
       if (cancel.value) throw new Error("Process terminated");
       await downloadDriveItem(file, path.join(newPath));
       bar.increment();
     });
+    await Promise.all(tasks);
 
-    await Promise.all(processes);
     bar.stop();
-
     await processFolderActions(id, parentId);
   } catch (error) {
     await processFolderActions(id, parentId);

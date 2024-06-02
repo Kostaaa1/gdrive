@@ -193,6 +193,11 @@ export class ClientQuestions {
           value: "OPEN",
           key: "p",
         },
+{
+          name: "Switch account",
+          value: "SWITCH",
+          key: "s",
+        },
         {
           name: "Exit",
           value: "EXIT",
