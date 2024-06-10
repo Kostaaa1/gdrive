@@ -14,8 +14,9 @@ export const scrapeMedia = async (
     console.log("URL incorrect. Make sure you are using the correct URL.");
     return [];
   }
+
   console.log(`Scraping ${url}...`);
-  const cancel = { value: false };
+  const cancel = { value: true };
   const cleanup = cancelOnEscape(cancel);
   const browser = await puppeteer.launch({
     headless: true,

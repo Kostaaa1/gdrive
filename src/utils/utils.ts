@@ -4,7 +4,7 @@ import fs from "fs";
 import mime from "mime";
 import { exec } from "child_process";
 import open from "open";
-import path from "path";
+import path, { basename } from "path";
 import { readdir, access, mkdir } from "fs/promises";
 import chalk from "chalk";
 import { Presets, SingleBar } from "cli-progress";
@@ -78,9 +78,9 @@ export function parseFileExtension(name: string, mimeType: string): string {
   return !hasFileExtension ? `${name}.${fileExt}` : name;
 }
 
-const pathExists = async (fpath: string) => {
+const pathExistsSync = (fpath: string) => {
   try {
-    await access(fpath);
+    fs.accessSync(fpath);
     return true;
   } catch (error: any) {
     if (error.code === "ENOENT") {
@@ -90,43 +90,19 @@ const pathExists = async (fpath: string) => {
     }
   }
 };
-
 export const parsePathName = async (itemPath: string) => {
-  const hasAccess = await pathExists(itemPath);
-  if (!hasAccess) return itemPath;
+  let filePath = itemPath;
 
-  const isDir = await isDirectory(itemPath);
-
-  const numEnclosedRgx = /\((\d+)\)/;
   const dirName = path.dirname(itemPath);
   const baseName = path.basename(itemPath);
 
-  const allItems = await readdir(dirName);
-  const items = allItems
-    .filter((x) => (isDir ? x.startsWith(baseName) : x.startsWith(baseName.split(".")[0])))
-    .sort((a, b) => a.length - b.length);
-
-  const lastItem = items.slice(-1)[0];
-  let newName: string = dirName + path.sep;
-  if (isDir) {
-    const enclosed = lastItem.slice(-3);
-    const n = parseInt(enclosed[1]);
-    newName += numEnclosedRgx.test(enclosed)
-      ? `${baseName.split(enclosed)[0]} (${n + 1})`
-      : `${baseName} (0)`;
-  } else {
-    const s = lastItem.split(".");
-    const name = s[0];
-    const ext = s[1];
-    const enclosed = name.slice(-3);
-
-    const n = parseInt(enclosed[1]);
-    newName += numEnclosedRgx.test(enclosed)
-      ? `${name.split(enclosed)[0]} (${n + 1}).${ext}`
-      : `${name} (0).${ext}`;
+  let counter = 1;
+  while (pathExistsSync(filePath)) {
+    filePath = path.join(dirName, `${baseName} (${counter}).${path.extname(itemPath)}`);
+    counter++;
   }
 
-  return newName;
+  return filePath;
 };
 
 export async function createFolder(folderPath: string): Promise<string> {
@@ -162,16 +138,11 @@ export async function getUrlMimeType(url: string): Promise<string | undefined> {
 export async function convertUrlToStream(url: string): Promise<internal.Readable | null> {
   try {
     const parsed = new URL(url);
-    if (parsed.pathname.endsWith(".m3u8")) {
-      const stream = new PassThrough();
+  } catch (error) {
+    console.log("Incorrect URL");
+  }
 
-      ffmpeg(url)
-        .outputOptions(["-c copy", "-preset ultrafast", "-f mpegts"])
-        .pipe(stream, { end: true });
-
-      return stream;
-    }
-
+  try {
     const res = await axios.get(url, { responseType: "stream" });
     return res.status === 200 ? res.data : [];
   } catch (error) {
@@ -221,7 +192,6 @@ export function extractFileNameFromUrl(url: string) {
   }
 
   fileName = decodeURIComponent(fileName);
-  if (fileName.endsWith(".m3u8")) fileName = fileName.replace(".m3u8", ".mp4");
   return fileName;
 }
 
@@ -308,18 +278,7 @@ export function isGdriveFolder(type: string) {
   return type === "application/vnd.google-apps.folder";
 }
 
-export function base64ToStream(base64str: string) {
-  const byteCharacters = atob(base64str);
-  const byteNumbers = new Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
-  }
-  const byteArray = new Uint8Array(byteNumbers);
-  const blob = new Blob([byteArray], { type: "image/jpeg" });
-  return blob;
-}
-
-export const parseItemsForQuestion = <Value>(items: TFile[]): Choice<Value>[] => {
+export const prepareItemsForQuestion = <Value>(items: TFile[]): Choice<Value>[] => {
   // @ts-ignore
   return items.map((file) => ({
     name: `${file.name} ${isGdriveFolder(file.mimeType) ? chalk.gray("(folder)") : ""}`,
@@ -344,7 +303,6 @@ export function cancelOnEscape(cancel: { value: boolean }) {
   process.stdin.on("keypress", handleKeypress);
 
   return () => {
-    console.log(" ON CANCEL EXIT PROCESS");
     process.stdin.removeListener("keypress", handleKeypress);
     process.stdin.setRawMode(false);
     process.stdin.pause();

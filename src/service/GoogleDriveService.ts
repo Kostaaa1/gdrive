@@ -1,4 +1,4 @@
-import { createWriteStream } from "fs";
+import fs from "fs";
 import { writeFile, readFile } from "fs/promises";
 import { drive_v3, google } from "googleapis";
 import readline from "readline-sync";
@@ -6,6 +6,7 @@ import { convertBytes, formatDate, formatStorageQuotaMessage, stop } from "../ut
 import { TFile, TFolder, TUploadFile } from "../types/types.js";
 import pLimit from "p-limit";
 import InteractiveList from "../custom/InteractiveList.mjs";
+import path from "path";
 
 const {
   GOOGLE_CLIENT_ID = "",
@@ -83,31 +84,45 @@ export class GoogleDriveService {
     }
   }
 
-  public async logOut() {
+  public async logout() {
     this.oauth2Client.setCredentials({});
-    await this.logIn();
+    await this.login();
   }
 
-  public async logIn() {
+  public async login() {
     console.clear();
-    const userTokens = await readFile("./tokens/googleDriveToken.json", "utf-8");
-    this.tokens = JSON.parse(userTokens);
-    let selectedUser: string = "";
+    const tokenPath = "./tokens/googleDriveToken.json";
+    const dirPath = path.dirname(tokenPath);
 
-    if (userTokens) {
-      const parsed = JSON.parse(userTokens);
-      selectedUser = await InteractiveList({
-        message: "Choose action for trash: ",
-        choices: [
-          ...Object.keys(parsed).map((username) => ({
-            name: username,
-            value: username,
-          })),
-          { name: "New user", value: "" },
-        ],
-      });
+    if (fs.existsSync(tokenPath)) {
+      const userTokens = await readFile(tokenPath, "utf-8");
+      this.tokens = JSON.parse(userTokens);
+      let selectedUser: string = "";
+
+      if (userTokens) {
+        const parsed = JSON.parse(userTokens);
+        selectedUser = await InteractiveList({
+          message: "Choose action for trash: ",
+          choices: [
+            ...Object.keys(parsed).map((username) => ({
+              name: username,
+              value: username,
+            })),
+            { name: "New user", value: "" },
+          ],
+        });
+      }
+      await this.authorize(selectedUser);
+    } else {
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+
+      if (!fs.existsSync(tokenPath)) {
+        fs.writeFileSync(tokenPath, "{}");
+      }
+      await this.login()
     }
-    await this.authorize(selectedUser);
   }
 
   public async getRootItems(): Promise<TFile[]> {
@@ -273,7 +288,7 @@ export class GoogleDriveService {
   // Change it to return only readable stream
   public async downloadFile(filePath: string, fileId: string) {
     try {
-      const fileStream = createWriteStream(filePath);
+      const fileStream = fs.createWriteStream(filePath);
       const file = await this.drive_client.files.get(
         { fileId: fileId, alt: "media" },
         { responseType: "stream" }

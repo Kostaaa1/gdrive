@@ -44,7 +44,7 @@ export const processMainActions = async () => {
         break;
       case "SWITCH":
         cache.flushAll();
-        await gdrive.logOut();
+        await gdrive.logout();
         await processMainActions();
         break;
       case "EXIT":
@@ -63,6 +63,6 @@ export const processMainActions = async () => {
 };
 
 (async () => {
-  await gdrive.logIn();
+  await gdrive.login();
   await processMainActions();
 })();

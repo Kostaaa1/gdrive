@@ -11,12 +11,7 @@ import {
   UploadActions,
 } from "../types/types.js";
 import chalk from "chalk";
-import {
-  isExtensionValid,
-  isGdriveFolder,
-  notify,
-  parseItemsForQuestion,
-} from "../utils/utils.js";
+import { isExtensionValid, notify, prepareItemsForQuestion } from "../utils/utils.js";
 import interactiveList from "../custom/InteractiveList.mjs";
 import { existsSync } from "fs";
 import checkboxPrompt from "../custom/Checkbox.mjs";
@@ -99,10 +94,7 @@ export class ClientQuestions {
     console.clear();
     const selected = await checkboxPrompt({
       message,
-      choices: items.map((file) => ({
-        name: `${file.name} ${isGdriveFolder(file.mimeType) ? chalk.gray("(folder)") : ""}`,
-        value: file,
-      })),
+      choices: prepareItemsForQuestion<TFile>(items),
     });
 
     if (selected.length === 0) {
@@ -165,7 +157,7 @@ export class ClientQuestions {
     const answer = await interactiveList<TFile, MainActions>({
       message: "Your root folder/files: ",
       sufix: storageSizeMsg,
-      choices: parseItemsForQuestion(items),
+      choices: prepareItemsForQuestion(items),
       actions: [
         { name: "Manage Trash", value: "TRASH", key: "t" },
         {
@@ -193,7 +185,7 @@ export class ClientQuestions {
           value: "OPEN",
           key: "p",
         },
-{
+        {
           name: "Switch account",
           value: "SWITCH",
           key: "s",
@@ -231,7 +223,7 @@ export class ClientQuestions {
 
     const answer = await interactiveList<TFile, FolderActions>({
       message,
-      choices: parseItemsForQuestion(files),
+      choices: prepareItemsForQuestion(files),
       actionMsg: "Folder actions:",
       actions: [
         {

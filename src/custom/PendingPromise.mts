@@ -37,8 +37,7 @@ import chalk from "chalk";
 import figures from "figures";
 import ansiEscapes from "ansi-escapes";
 import { TCached } from "../store/store.js";
-import { TFile } from "../types/types.js";
-import { parseItemsForQuestion } from "../utils/utils.js";
+import { prepareItemsForQuestion } from "../utils/utils.js";
 
 const selectTheme: SelectTheme = {
   icon: { cursor: figures.pointer },
@@ -122,10 +121,10 @@ export default async <Value, KeyValue = never>(
   if (choices instanceof Promise) {
     spinner = ora(msg).start();
     const data = await choices;
-    items = parseItemsForQuestion(data.items);
+    items = prepareItemsForQuestion(data.items);
     historyId = data.historyId;
   } else {
-    items = parseItemsForQuestion(choices.items);
+    items = prepareItemsForQuestion(choices.items);
     historyId = choices.historyId;
   }
   if (spinner) spinner.stop();

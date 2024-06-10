@@ -86,7 +86,7 @@ const handleUploadFromUrl = async (parentId?: string) => {
   await gdrive.uploadSingleFile({ name, stream, parentId });
 };
 
-export const uploadFile = async (data: {
+const uploadFile = async (data: {
   fileName: string;
   parentId: string;
   path: string;
@@ -114,9 +114,9 @@ export const handleUploadFolder = async (
   let cancel = { value: false };
   const { progressBar: bar } = initProgressBar(files.length, cancel);
   const queue: { fullPath: string; name: string; parentId: string }[] = [];
-  const limit = pLimit(8);
 
-  const batchUpload = files.map(async (fileName) => {
+  const limit = pLimit(8);
+  const batch = files.map(async (fileName) => {
     return limit(async () => {
       if (cancel.value) throw new Error("Operation terminated");
       const fullPath = path.join(resPath, fileName);
@@ -130,8 +130,7 @@ export const handleUploadFolder = async (
       bar.increment();
     });
   });
-
-  await Promise.all(batchUpload);
+  await Promise.all(batch);
 
   while (true) {
     for (const p of queue) {
