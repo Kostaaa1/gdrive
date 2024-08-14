@@ -30,17 +30,16 @@ npm install
 
 ## Usage
 
-1. Obtain Google API Credentials
-    * Go to the Google API Console (https://duckduckgo.com).
+1. Obtain Google API Credentials (https://developers.google.com/identity/protocols/oauth2)
+    * Go to the Google API Console.
     * Create a new project or select an existing one.
-    * Enable the necessary APIs for your project.
-    * Create OAuth 2.0 client IDs and download the credentials file.
+    * Enable the Google Drive API for your project.
+    * Create OAuth 2.0 client IDs and obtain the necessary fields.
 
 3. Set Up Environment Variables
     Create a .env file in the root directory of your project and add the following environment variables with your credentials:
+
 ```bash
-Copy code
-    
 GOOGLE_CLIENT_ID=your_client_id
 GOOGLE_CLIENT_SECRET=your_client_secret
 GOOGLE_REDIRECT_URL=your_redirect_url

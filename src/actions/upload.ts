@@ -45,7 +45,7 @@ export const scrapeAndUpload = async (id?: string) => {
 
   const cancel = { value: false };
   const { progressBar } = await initProgressBar(urls.length, cancel);
-  const limit = pLimit(20);
+  const limit = pLimit(40);
   let parentId = id;
   if (name) {
     const res = await gdrive.createFolder(name, id);
@@ -115,7 +115,7 @@ export const handleUploadFolder = async (
   const { progressBar: bar } = initProgressBar(files.length, cancel);
   const queue: { fullPath: string; name: string; parentId: string }[] = [];
 
-  const limit = pLimit(8);
+  const limit = pLimit(40);
   const batch = files.map(async (fileName) => {
     return limit(async () => {
       if (cancel.value) throw new Error("Operation terminated");

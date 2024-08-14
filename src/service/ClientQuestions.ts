@@ -216,7 +216,7 @@ export class ClientQuestions {
     const folderMsg = `${chalk.blueBright.underline(folderName)}`;
     const message =
       files.length > 1
-        ? `Choose file or choose the action for folder ${folderMsg}: `
+        ? `Choose file or action for folder ${folderMsg}: `
         : files.length === 1
         ? `Choose action for folder ${folderMsg}: `
         : `The folder ${folderMsg} is empty. Choose action: `;
@@ -417,10 +417,11 @@ export class ClientQuestions {
 
     const selected = await selectMedia();
     if (selected.length === 0) {
-      await notify("No items selected, make sure you have selected items in order to proceed.");
+      await notify(
+        "No items selected, please make sure you have selected items in order to proceed."
+      );
       await selectMedia();
     }
-
     if (durationType === "EVENT_INTERRUPTED") throw new Error(durationType);
     return { url, duration: duration ? duration * 1000 : null, name, types: selected };
   }

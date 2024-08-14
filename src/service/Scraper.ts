@@ -23,7 +23,6 @@ export const scrapeMedia = async (
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
-
   const page = await browser.newPage();
   await page.setUserAgent(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.9999.99 Safari/537.36"
@@ -61,11 +60,12 @@ export const scrapeMedia = async (
         await triggerInfiniteScroll();
       }
     }
+
     const parsedMedia = media
       .map((x) => (x === "IMAGE" ? "img" : x === "VIDEO" ? "video" : ""))
       .filter((x) => x.length > 0) as ScrapeMedia;
 
-    const mediaSources = await page.evaluate(async (parsedMedia) => {
+    let mediaSources = await page.evaluate(async (parsedMedia) => {
       const sources: string[] = [];
       for (const m of parsedMedia) {
         if (m === "video") {

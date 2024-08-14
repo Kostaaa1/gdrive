@@ -37,7 +37,7 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
 
     const executeOperation = async (
       actionFn: (item: TFile) => Promise<void>,
-      concurrencyLimit = 20
+      concurrencyLimit = 40
     ) => {
       const cancel = { value: false };
       const { progressBar } = initProgressBar(selected.length, cancel);
@@ -51,7 +51,6 @@ export const processMultipleItems = async (files: TFile[], parentId?: string) =>
         });
       });
       await Promise.all(tasks);
-
       progressBar.stop();
     };
 

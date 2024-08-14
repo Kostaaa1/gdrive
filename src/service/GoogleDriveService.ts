@@ -121,7 +121,7 @@ export class GoogleDriveService {
       if (!fs.existsSync(tokenPath)) {
         fs.writeFileSync(tokenPath, "{}");
       }
-      await this.login()
+      await this.login();
     }
   }
 
@@ -130,7 +130,6 @@ export class GoogleDriveService {
       q: "((mimeType='application/vnd.google-apps.folder' and 'root' in parents) or ('root' in parents and mimeType!='application/vnd.google-apps.folder')) and trashed=false",
       fields: "files(id, name, mimeType)",
     });
-
     const folders = res.data.files as TFile[];
     return folders.length
       ? folders?.map(({ name, mimeType, id }) => ({ name, value: name, mimeType, id }))
@@ -153,6 +152,7 @@ export class GoogleDriveService {
     const files = await this.getFolderItems(folderId);
     return files.length;
   }
+
   public async getFolderIdWithName(name: string, parentId?: string): Promise<string> {
     try {
       const res = await this.drive_client.files.list({
@@ -221,7 +221,7 @@ export class GoogleDriveService {
       });
       const files = res.data.files!;
 
-      const limit = pLimit(50);
+      const limit = pLimit(40);
       const tasks = files.map((file) => {
         return limit(async () => {
           const { id, name, mimeType } = file;
@@ -238,12 +238,6 @@ export class GoogleDriveService {
     return folders.sort((a, b) => a.path.localeCompare(b.path));
   }
 
-  /**
-   * Creates a new folder in Google Drive.
-   * @param folder_name The name of the folder to create.
-   * @param folder_id The ID of the parent folder. Optional.
-   * @returns The ID of the created folder.
-   */
   public async createFolder(folder_name: string, folder_id?: string): Promise<TFile> {
     try {
       const requestBody: { name: string; mimeType: string; parents?: string[] } = {

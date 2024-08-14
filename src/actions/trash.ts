@@ -15,7 +15,7 @@ export const processTrashActions = async () => {
     const cancel = { value: false };
     const { progressBar } = initProgressBar(selectedItems.length, cancel);
 
-    const limit = pLimit(8);
+    const limit = pLimit(40);
     if (selectedItems.length === trashItems.length && action === "DELETE") {
       await gdrive.emptyTrash();
     } else {
