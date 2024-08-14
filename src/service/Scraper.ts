@@ -3,6 +3,7 @@ import { ScrapingOpts } from "../types/types.js";
 import { cancelOnEscape, stop } from "../utils/utils.js";
 
 type ScrapeMedia = ("img" | "video" | "iframe")[];
+
 export const scrapeMedia = async (
   url: string,
   media: ScrapingOpts[],
@@ -16,7 +17,7 @@ export const scrapeMedia = async (
   }
 
   console.log(`Scraping ${url}...`);
-  const cancel = { value: true };
+  const cancel = { value: false };
   const cleanup = cancelOnEscape(cancel);
   const browser = await puppeteer.launch({
     headless: true,
@@ -38,28 +39,31 @@ export const scrapeMedia = async (
   try {
     let previousHeight;
     let currentHeight = 0;
-    const parsedMedia = media
-      .map((x) => (x === "IMAGE" ? "img" : x === "VIDEO" ? "video" : ""))
-      .filter((x) => x.length > 0) as ScrapeMedia;
-
     const triggerInfiniteScroll = async () => {
       while (!cancel.value) {
         previousHeight = currentHeight;
-        currentHeight = (await page.evaluate("document.body.scrollHeight")) as number;
+        currentHeight = (await page.evaluate(() => document.body.scrollHeight)) as number;
         if (previousHeight >= currentHeight) break;
-        await page.evaluate("window.scrollToee, document.body.scrollHeight)");
+        await page.evaluate(() => {
+          window.scrollTo(0, document.body.scrollHeight);
+        });
         await stop(1200);
       }
     };
 
-    if (stoppingPeriod) {
-      await Promise.race([
-        new Promise((resolve) => setTimeout(resolve, stoppingPeriod)),
-        triggerInfiniteScroll(),
-      ]);
-    } else {
-      await triggerInfiniteScroll();
+    if (!cancel.value) {
+      if (stoppingPeriod) {
+        await Promise.race([
+          new Promise((resolve) => setTimeout(resolve, stoppingPeriod)),
+          triggerInfiniteScroll(),
+        ]);
+      } else {
+        await triggerInfiniteScroll();
+      }
     }
+    const parsedMedia = media
+      .map((x) => (x === "IMAGE" ? "img" : x === "VIDEO" ? "video" : ""))
+      .filter((x) => x.length > 0) as ScrapeMedia;
 
     const mediaSources = await page.evaluate(async (parsedMedia) => {
       const sources: string[] = [];
@@ -72,7 +76,6 @@ export const scrapeMedia = async (
               tag.getAttribute("data-mp4") ||
               tag.getAttribute("data-src") ||
               tag.getAttribute("srcset");
-
             const child = tag.children[0];
             const childSrc =
               child.getAttribute("src") ||
@@ -80,11 +83,9 @@ export const scrapeMedia = async (
               tag.getAttribute("data-src") ||
               child.getAttribute("data-src") ||
               child.getAttribute("srcset");
-
             if (childSrc && !sources.includes(childSrc)) {
               sources.push(childSrc);
             }
-
             if (source && !sources.includes(source)) {
               sources.push(source);
             }
@@ -107,11 +108,10 @@ export const scrapeMedia = async (
 
     console.log(`Scraping finished, found ${mediaSources.length} URLs.`);
     cleanup();
+    await browser.close();
     return mediaSources;
   } catch (err) {
     console.log("Unexpected error. Make sure you are entering the correct URL.");
     return [];
-  } finally {
-    await browser.close();
   }
 };
